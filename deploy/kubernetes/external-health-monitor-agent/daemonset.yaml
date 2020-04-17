@@ -1,0 +1,50 @@
+# This YAML file demonstrates how to deploy the external
+# health monitor agent for use with the mock CSI driver. It
+# depends on the RBAC definitions from rbac.yaml.
+
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: csi-external-health-monitor-agent
+spec:
+  selector:
+    matchLabels:
+      external-health-monitor-agent: mock-driver
+  template:
+    metadata:
+      labels:
+        external-health-monitor-agent: mock-driver
+    spec:
+      serviceAccount: csi-external-health-monitor-agent
+      containers:
+        - name: csi-external-health-monitor-agent
+          image: quay.io/k8scsi/csi-external-health-monitor-agent:canary
+          args:
+            - "--v=5"
+            - "--csi-address=$(ADDRESS)"
+            - "--leader-election"
+          env:
+            - name: MY_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: ADDRESS
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+          imagePullPolicy: "IfNotPresent"
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+        - name: mock-driver
+          image: quay.io/k8scsi/mock-driver:canary
+          imagePullPolicy: "IfNotPresent"
+          env:
+            - name: CSI_ENDPOINT
+              value: /var/lib/csi/sockets/pluginproxy/mock.socket
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /var/lib/csi/sockets/pluginproxy/
+
+      volumes:
+        - name: socket-dir
+          emptyDir:
