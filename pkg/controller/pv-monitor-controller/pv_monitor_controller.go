@@ -42,11 +42,13 @@ import (
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
 
+// PVMonitorController is the struct of pv monitor controller containing all information to perform volumes health condition checking
 type PVMonitorController struct {
-	client          kubernetes.Interface
-	monitorName     string
-	monitorInterval time.Duration
-	eventRecorder   record.EventRecorder
+	client             kubernetes.Interface
+	monitorName        string
+	monitorInterval    time.Duration
+	eventRecorder      record.EventRecorder
+	supportListVolumes bool
 
 	pvChecker *handler.PVHealthConditionChecker
 
@@ -72,10 +74,12 @@ type PVMonitorController struct {
 }
 
 const (
+	listVolumesInterval     = 5 * time.Minute
 	pvReconcileSyncInterval = 10 * time.Minute
 )
 
-func NewPVMonitorController(client kubernetes.Interface, monitorName string, conn *grpc.ClientConn, timeout time.Duration, monitorInterval time.Duration, pvInformer coreinformers.PersistentVolumeInformer,
+// NewPVMonitorController create PV monitor controller
+func NewPVMonitorController(client kubernetes.Interface, monitorName string, supportListVolumes bool, conn *grpc.ClientConn, timeout time.Duration, monitorInterval time.Duration, pvInformer coreinformers.PersistentVolumeInformer,
 	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer) *PVMonitorController {
 
 	broadcaster := record.NewBroadcaster()
@@ -84,15 +88,15 @@ func NewPVMonitorController(client kubernetes.Interface, monitorName string, con
 	eventRecorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-controller-%s", monitorName)})
 
 	ctrl := &PVMonitorController{
-		csiConn:         conn,
-		eventRecorder:   eventRecorder,
-		client:          client,
-		monitorName:     monitorName,
-		monitorInterval: monitorInterval,
-		pvQueue:         workqueue.NewNamed("csi-monitor-pv-queue"),
+		csiConn:            conn,
+		eventRecorder:      eventRecorder,
+		supportListVolumes: supportListVolumes,
+		client:             client,
+		monitorName:        monitorName,
+		monitorInterval:    monitorInterval,
+		pvQueue:            workqueue.NewNamed("csi-monitor-pv-queue"),
 		//pvQueue:       workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "csi-monitor-pv-queue"),
 
-		//pvcToPodsMap: make(map[string]PodSet),
 		pvcToPodsCache: util.NewPVCToPodsCache(),
 		pvEnqueued:     make(map[string]bool),
 	}
@@ -121,11 +125,12 @@ func NewPVMonitorController(client kubernetes.Interface, monitorName string, con
 
 	ctrl.nodeWatcher = NewNodeWatcher(ctrl.monitorName, ctrl.client, ctrl.pvLister, ctrl.pvcLister, nodeInformer, ctrl.eventRecorder, ctrl.pvcToPodsCache, monitorInterval)
 
-	ctrl.pvChecker = handler.NewPVHealthConditionChecker(monitorName, conn, client, timeout, ctrl.pvcLister, ctrl.eventRecorder)
+	ctrl.pvChecker = handler.NewPVHealthConditionChecker(monitorName, conn, client, timeout, ctrl.pvcLister, ctrl.pvLister, ctrl.eventRecorder)
 
 	return ctrl
 }
 
+// Run runs the volume health condition checking method
 func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
 	defer ctrl.pvQueue.ShutDown()
 
@@ -139,20 +144,32 @@ func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
 
 	go ctrl.nodeWatcher.Run(stopCh)
 
-	for i := 0; i < workers; i++ {
-		go wait.Until(ctrl.checkPVWorker, ctrl.monitorInterval, stopCh)
-	}
-
-	go wait.Until(func() {
-		err := ctrl.ReconcilePVs()
-		if err != nil {
-			klog.Errorf("Failed to reconcile volumes: %v", err)
+	if ctrl.supportListVolumes {
+		go wait.Until(ctrl.checkPVsHealthConditionByListVolumes, listVolumesInterval, stopCh)
+	} else {
+		for i := 0; i < workers; i++ {
+			go wait.Until(ctrl.checkPVWorker, ctrl.monitorInterval, stopCh)
 		}
-	}, pvReconcileSyncInterval, stopCh)
+
+		go wait.Until(func() {
+			err := ctrl.ReconcilePVs()
+			if err != nil {
+				klog.Errorf("Failed to reconcile volumes: %v", err)
+			}
+		}, pvReconcileSyncInterval, stopCh)
+	}
 
 	<-stopCh
 }
 
+func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes() {
+	err := ctrl.pvChecker.CheckControllerVolumesStatus()
+	if err != nil {
+		klog.Errorf("check controller volume status error: %+v", err)
+	}
+}
+
+// ReconcilePVs reconciles PVs
 func (ctrl *PVMonitorController) ReconcilePVs() error {
 	// TODO: add PV filters when listing
 	pvs, err := ctrl.pvLister.List(labels.Everything())

@@ -26,6 +26,7 @@ import (
 	"k8s.io/klog"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
@@ -43,13 +44,14 @@ type PVHealthConditionChecker struct {
 	eventRecorder record.EventRecorder
 
 	pvcLister corelisters.PersistentVolumeClaimLister
+	pvLister  corelisters.PersistentVolumeLister
 
 	csiPVHandler CSIHandler
 }
 
 // NewPVHealthConditionChecker return an instance of PVHealthConditionChecker
 func NewPVHealthConditionChecker(name string, conn *grpc.ClientConn, kClient kubernetes.Interface, timeout time.Duration,
-	pvcLister corelisters.PersistentVolumeClaimLister, recorder record.EventRecorder) *PVHealthConditionChecker {
+	pvcLister corelisters.PersistentVolumeClaimLister, pvLister corelisters.PersistentVolumeLister, recorder record.EventRecorder) *PVHealthConditionChecker {
 	/*broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: kClient.CoreV1().Events(v1.NamespaceAll)})
 	var eventRecorder record.EventRecorder
@@ -61,10 +63,57 @@ func NewPVHealthConditionChecker(name string, conn *grpc.ClientConn, kClient kub
 		k8sClient:     kClient,
 		eventRecorder: recorder,
 		pvcLister:     pvcLister,
+		pvLister:      pvLister,
 		timeout:       timeout,
 
 		csiPVHandler: NewCSIPVHandler(conn),
 	}
+}
+
+// CheckControllerVolumesStatus checks volumes health condition by ListVolumes
+func (checker *PVHealthConditionChecker) CheckControllerVolumesStatus() error {
+	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
+	defer cancel()
+
+	result, err := checker.csiPVHandler.ControllerVolumesChecking(ctx)
+	if err != nil {
+		return err
+	}
+
+	pvs, err := checker.pvLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+
+	for _, pv := range pvs {
+		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != checker.checkerName {
+			klog.Infof("csi source is nil or the volume is not managed by this checker/monitor")
+			continue
+		}
+
+		if pv.Status.Phase != v1.VolumeBound {
+			klog.Infof("PV: %s status is not bound", pv.Name)
+			continue
+		}
+
+		volumeHandle, err := checker.GetVolumeHandle(pv)
+		if err != nil {
+			klog.Errorf("Get volume handler error: %+v", err)
+			continue
+		}
+
+		if result[volumeHandle] != nil && result[volumeHandle].GetAbnormal() {
+			// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
+			pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
+			if err != nil {
+				klog.Errorf("Get PVC error: %+v", err)
+				continue
+			}
+			checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "PV is not healthy(detected by monitor controller)", result[volumeHandle].GetMessage())
+		}
+	}
+
+	return nil
 }
 
 // GetVolumeHandle return the volume handle of the pv
@@ -86,12 +135,6 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 		return fmt.Errorf("PV: %s status is not bound", pv.Name)
 	}
 
-	// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
-	pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
-	if err != nil {
-		return err
-	}
-
 	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
 	defer cancel()
 
@@ -105,14 +148,21 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 		return fmt.Errorf("volume handle in csi source is empty")
 	}
 
-	abnormal, message, err := checker.csiPVHandler.ControllerVolumeChecking(ctx, volumeHandle)
+	volumeCondition, err := checker.csiPVHandler.ControllerVolumeChecking(ctx, volumeHandle)
 	if err != nil {
 		return err
 	}
 
+	// if error is not nil, the volumeCondition result can not be nil neither
+
 	// At the first stage, we just send PVC events
-	if abnormal {
-		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "PV is not healthy(detected by monitor controller)", message)
+	if volumeCondition.GetAbnormal() {
+		// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
+		pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
+		if err != nil {
+			return err
+		}
+		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "PV is not healthy(detected by monitor controller)", volumeCondition.GetMessage())
 	}
 
 	return nil
@@ -126,12 +176,6 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 
 	if pv.Status.Phase != v1.VolumeBound {
 		return fmt.Errorf("PV: %s status is not bound", pv.Name)
-	}
-
-	// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
-	pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
-	if err != nil {
-		return err
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
@@ -158,14 +202,21 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 		}
 	}
 
-	abnormal, message, err := checker.csiPVHandler.NodeVolumeChecking(ctx, volumeHandle, volumePath, stagingTargetPath)
+	volumeCondition, err := checker.csiPVHandler.NodeVolumeChecking(ctx, volumeHandle, volumePath, stagingTargetPath)
 	if err != nil {
 		return err
 	}
 
+	// if error is not nil, the volumeCondition result can not be nil neither
+
 	// At the first stage, we just send PVC events
-	if abnormal {
-		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "PV is not healthy(detected by monitor agent)", message)
+	if volumeCondition.GetAbnormal() {
+		// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
+		pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
+		if err != nil {
+			return err
+		}
+		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "PV is not healthy(detected by monitor agent)", volumeCondition.GetMessage())
 	}
 
 	return nil

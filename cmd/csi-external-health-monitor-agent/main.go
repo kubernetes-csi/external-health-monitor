@@ -29,10 +29,10 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
-	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 
 	monitoragent "github.com/kubernetes-csi/external-health-monitor/pkg/agent/pv-monitor-agent"
@@ -54,7 +54,7 @@ var (
 	showVersion     = flag.Bool("version", false, "Show version.")
 	timeout         = flag.Duration("timeout", 15*time.Second, "Timeout for waiting for attaching or detaching the volume.")
 	workerThreads   = flag.Uint("worker-threads", 10, "Number of pv monitor worker threads")
-	kubeletRootPath = flag.String("kubelet-root-path", "/var/lib/kubelet", "The root path pf kubelet.")
+	kubeletRootPath = flag.String("kubelet-root-path", "/var/lib/kubelet", "The root path of kubelet.")
 
 	metricsAddress = flag.String("metrics-address", "", "The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled.")
 	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
@@ -122,13 +122,13 @@ func main() {
 	metricsManager.SetDriverName(storageDriver)
 	metricsManager.StartMetricsEndpoint(*metricsAddress, *metricsPath)
 
-	supportGetNodeVolumeHealth, err := supportGetNodeVolumeHealth(ctx, csiConn)
+	supportNodeGetVolumeCondition, err := supportNodeGetVolumeCondition(ctx, csiConn)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
 	}
-	if !supportGetNodeVolumeHealth {
-		klog.V(2).Infof("CSI driver does not support VolumeHealth Node Capability, exiting")
+	if !supportNodeGetVolumeCondition {
+		klog.V(2).Infof("CSI driver does not support Node VolumeCondition Capability, exiting")
 		os.Exit(1)
 	}
 
@@ -157,7 +157,7 @@ func buildConfig(kubeconfig string) (*rest.Config, error) {
 	return rest.InClusterConfig()
 }
 
-func supportGetNodeVolumeHealth(ctx context.Context, csiConn *grpc.ClientConn) (supportGetNodeVolumeHealth bool, err error) {
+func supportNodeGetVolumeCondition(ctx context.Context, csiConn *grpc.ClientConn) (supportNodeGetVolumeCondition bool, err error) {
 	client := csi.NewNodeClient(csiConn)
 	req := csi.NodeGetCapabilitiesRequest{}
 	rsp, err := client.NodeGetCapabilities(ctx, &req)
@@ -174,7 +174,7 @@ func supportGetNodeVolumeHealth(ctx context.Context, csiConn *grpc.ClientConn) (
 			continue
 		}
 		t := rpc.GetType()
-		if t == csi.NodeServiceCapability_RPC_GET_VOLUME_STATS {
+		if t == csi.NodeServiceCapability_RPC_VOLUME_CONDITION {
 			return true, nil
 		}
 	}
