@@ -160,7 +160,7 @@ func (agent *PVMonitorAgent) checkPVWorker() {
 
 	podWithPV, ok := key.(*PodWithPVItem)
 	if !ok || agent.atLeastOneFieldIsEmpty(podWithPV) {
-		klog.Errorf("error item type or at least one filed in PodWithPV is empty", key)
+		klog.Errorf("error item type or at least one filed in PodWithPV is empty for PV %q", key)
 	}
 
 	klog.V(4).Infof("Started PV processing %q", podWithPV.pvName)

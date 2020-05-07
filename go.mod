@@ -7,10 +7,7 @@ require (
 	github.com/golang/protobuf v1.3.5 // indirect
 	github.com/imdario/mergo v0.3.9 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.7.0
-	golang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3 // indirect
-	golang.org/x/tools v0.0.0-20190524140312-2c0ae7006135 // indirect
 	google.golang.org/grpc v1.28.0
-	honnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc // indirect
 	k8s.io/api v0.17.0
 	k8s.io/apimachinery v0.17.1-beta.0
 	k8s.io/client-go v0.17.0
