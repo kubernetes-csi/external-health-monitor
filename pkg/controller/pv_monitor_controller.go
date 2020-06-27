@@ -134,7 +134,7 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 
 	// PVC informer
 	ctrl.pvcLister = pvcInformer.Lister()
-	ctrl.pvListerSynced = pvcInformer.Informer().HasSynced
+	ctrl.pvcListerSynced = pvcInformer.Informer().HasSynced
 
 	// Pod informer
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

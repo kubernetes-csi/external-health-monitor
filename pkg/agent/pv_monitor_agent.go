@@ -100,7 +100,7 @@ func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grp
 
 	// PVC informer
 	agent.pvcLister = pvcInformer.Lister()
-	agent.pvListerSynced = pvcInformer.Informer().HasSynced
+	agent.pvcListerSynced = pvcInformer.Informer().HasSynced
 
 	// Pod informer
 	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{

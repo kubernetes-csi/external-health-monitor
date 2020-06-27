@@ -22,7 +22,6 @@ spec:
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
-            - "--leader-election"
           env:
             - name: MY_NAME
               valueFrom:
