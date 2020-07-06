@@ -34,6 +34,9 @@ rules:
   - apiGroups: [""]
     resources: ["pods"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["event"]
+    verbs: ["get", "list", "watch", "create", "patch"]
 
 ---
 kind: ClusterRoleBinding
