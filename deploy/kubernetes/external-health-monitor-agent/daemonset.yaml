@@ -23,10 +23,10 @@ spec:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
           env:
-            - name: MY_NAME
+            - name: NODE_NAME
               valueFrom:
                 fieldRef:
-                  fieldPath: metadata.name
+                  fieldPath: spec.nodeName
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
           imagePullPolicy: "IfNotPresent"

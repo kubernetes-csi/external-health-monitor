@@ -138,8 +138,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	monitorAgent := monitoragent.NewPVMonitorAgent(clientset, storageDriver, csiConn, *timeout, *monitorInterval, factory.Core().V1().PersistentVolumes(),
+	monitorAgent, err := monitoragent.NewPVMonitorAgent(clientset, storageDriver, csiConn, *timeout, *monitorInterval, factory.Core().V1().PersistentVolumes(),
 		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), supportStageUnstage, *kubeletRootPath)
+	if err != nil {
+		klog.Error(err.Error())
+		os.Exit(1)
+	}
 
 	run := func(ctx context.Context) {
 		stopCh := ctx.Done()

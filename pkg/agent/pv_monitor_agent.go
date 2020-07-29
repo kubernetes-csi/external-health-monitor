@@ -17,10 +17,10 @@ limitations under the License.
 package pv_monitor_agent
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"time"
-
-	"k8s.io/klog"
 
 	"google.golang.org/grpc"
 
@@ -35,6 +35,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog"
 
 	handler "github.com/kubernetes-csi/external-health-monitor/pkg/csi-handler"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
@@ -77,7 +78,7 @@ type PVMonitorAgent struct {
 
 // NewPVMonitorAgent create pv monitor agent
 func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grpc.ClientConn, timeout time.Duration, monitorInterval time.Duration, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, supportStageUnstage bool, kubeletRootPath string) *PVMonitorAgent {
+	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, supportStageUnstage bool, kubeletRootPath string) (*PVMonitorAgent, error) {
 	broadcaster := record.NewBroadcaster()
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
 	var eventRecorder record.EventRecorder
@@ -112,8 +113,12 @@ func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grp
 	agent.podListerSynced = podInformer.Informer().HasSynced
 
 	agent.pvChecker = handler.NewPVHealthConditionChecker(driverName, conn, client, timeout, agent.pvcLister, agent.pvLister, agent.eventRecorder)
+	agent.nodeName = os.Getenv(util.EnvNodeName)
+	if agent.nodeName == "" {
+		return nil, errors.New("failed to get node name")
+	}
 
-	return agent
+	return agent, nil
 }
 
 // Run runs volume health condition checking method
