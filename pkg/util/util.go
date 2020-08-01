@@ -19,11 +19,10 @@ package util
 import (
 	"fmt"
 	"path"
+	"path/filepath"
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
-
-	"path/filepath"
 )
 
 const (

@@ -23,10 +23,14 @@ import (
 	"os"
 	"time"
 
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/scheme"
+	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/klog"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -138,8 +142,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	broadcaster := record.NewBroadcaster()
+	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: clientset.CoreV1().Events(v1.NamespaceAll)})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-agent-%s", storageDriver)})
 	monitorAgent, err := monitoragent.NewPVMonitorAgent(clientset, storageDriver, csiConn, *timeout, *monitorInterval, factory.Core().V1().PersistentVolumes(),
-		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), supportStageUnstage, *kubeletRootPath)
+		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), supportStageUnstage, *kubeletRootPath, eventRecorder)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)

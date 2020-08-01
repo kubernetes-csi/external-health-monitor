@@ -28,12 +28,14 @@ import (
 var _ CSIHandler = &csiPVHandler{}
 
 type csiPVHandler struct {
-	conn *grpc.ClientConn
+	controllerClient csi.ControllerClient
+	nodeClient       csi.NodeClient
 }
 
 func NewCSIPVHandler(conn *grpc.ClientConn) CSIHandler {
 	return &csiPVHandler{
-		conn: conn,
+		controllerClient: csi.NewControllerClient(conn),
+		nodeClient:       csi.NewNodeClient(conn),
 	}
 }
 
@@ -51,13 +53,11 @@ func (vcr *VolumeConditionResult) GetMessage() string {
 }
 
 func (handler *csiPVHandler) ControllerListVolumeConditions(ctx context.Context) (map[string]*VolumeConditionResult, error) {
-	client := csi.NewControllerClient(handler.conn)
-
 	p := map[string]*VolumeConditionResult{}
 
 	token := ""
 	for {
-		rsp, err := client.ListVolumes(ctx, &csi.ListVolumesRequest{
+		rsp, err := handler.controllerClient.ListVolumes(ctx, &csi.ListVolumesRequest{
 			StartingToken: token,
 		})
 		if err != nil {
@@ -80,13 +80,11 @@ func (handler *csiPVHandler) ControllerListVolumeConditions(ctx context.Context)
 }
 
 func (handler *csiPVHandler) ControllerGetVolumeCondition(ctx context.Context, volumeID string) (*VolumeConditionResult, error) {
-	client := csi.NewControllerClient(handler.conn)
-
 	req := csi.ControllerGetVolumeRequest{
 		VolumeId: volumeID,
 	}
 
-	res, err := client.ControllerGetVolume(ctx, &req)
+	res, err := handler.controllerClient.ControllerGetVolume(ctx, &req)
 	if err != nil {
 		// if there is an error, do not return abnormal status
 		// wait for another call
@@ -100,15 +98,13 @@ func (handler *csiPVHandler) ControllerGetVolumeCondition(ctx context.Context, v
 }
 
 func (handler *csiPVHandler) NodeGetVolumeCondition(ctx context.Context, volumeID string, volumePath string, volumeStagingPath string) (*VolumeConditionResult, error) {
-	client := csi.NewNodeClient(handler.conn)
-
 	req := csi.NodeGetVolumeStatsRequest{
 		VolumeId:          volumeID,
 		VolumePath:        volumePath,
 		StagingTargetPath: volumeStagingPath,
 	}
 
-	res, err := client.NodeGetVolumeStats(ctx, &req)
+	res, err := handler.nodeClient.NodeGetVolumeStats(ctx, &req)
 	if err != nil {
 		// if there is an error, do not return abnormal status
 		// wait for another call
