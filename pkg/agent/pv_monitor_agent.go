@@ -18,7 +18,6 @@ package pv_monitor_agent
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"time"
 
@@ -29,8 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/scheme"
-	corev1 "k8s.io/client-go/kubernetes/typed/core/v1"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -78,11 +75,7 @@ type PVMonitorAgent struct {
 
 // NewPVMonitorAgent create pv monitor agent
 func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grpc.ClientConn, timeout time.Duration, monitorInterval time.Duration, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, supportStageUnstage bool, kubeletRootPath string) (*PVMonitorAgent, error) {
-	broadcaster := record.NewBroadcaster()
-	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: client.CoreV1().Events(v1.NamespaceAll)})
-	var eventRecorder record.EventRecorder
-	eventRecorder = broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-controller-%s", driverName)})
+	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, supportStageUnstage bool, kubeletRootPath string, eventRecorder record.EventRecorder) (*PVMonitorAgent, error) {
 
 	agent := &PVMonitorAgent{
 		supportStageUnstage: supportStageUnstage,
