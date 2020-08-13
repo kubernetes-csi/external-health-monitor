@@ -201,14 +201,8 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 		return err
 	}
 
-	// At the first stage, we just send PVC events
 	if volumeCondition.GetAbnormal() {
-		// Since pv status is bound, we believe PV controller, do not check pv.Spec.ClaimRef here.
-		pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
-		if err != nil {
-			return err
-		}
-		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
+		checker.eventRecorder.Event(pod, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
 	}
 
 	return nil
