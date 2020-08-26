@@ -19,7 +19,7 @@ spec:
       serviceAccount: csi-external-health-monitor-controller
       containers:
         - name: csi-external-health-monitor-controller
-          image: quay.io/k8scsi/csi-external-health-monitor-controller:canary
+          image: k8s.gcr.io/sig-storage/csi-external-health-monitor-controller:v1.0.0
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
