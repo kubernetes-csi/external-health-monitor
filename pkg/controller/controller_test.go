@@ -206,7 +206,7 @@ func Test_RecoveryEventWithListVolume(t *testing.T) {
 		NativeEvent: mock.CreateEvent("event", "", "pvcuid", v1.EventTypeWarning, "VolumeConditionAbnormal"),
 	}
 	testCase := &testCase{
-		name:               "normal_volume_recovery_event",
+		name:               "normal_volume_recovery_event1",
 		enableNodeWatcher:  false,
 		supportListVolumes: true,
 		fakeNativeObjects: &fakeNativeObjects{
@@ -239,7 +239,7 @@ func Test_RecoveryEventWithoutListVolume(t *testing.T) {
 		NativeEvent: mock.CreateEvent("event", "", "pvcuid", v1.EventTypeWarning, "VolumeConditionAbnormal"),
 	}
 	testCase := &testCase{
-		name:               "normal_volume_recovery_event",
+		name:               "normal_volume_recovery_event2",
 		enableNodeWatcher:  false,
 		supportListVolumes: false,
 		fakeNativeObjects: &fakeNativeObjects{

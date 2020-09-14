@@ -98,7 +98,7 @@ func Test_RecoveryEvent(t *testing.T) {
 	}
 
 	testCase := &testCase{
-		name: "normal_volume_case1",
+		name: "recovery_test_case1",
 		fakeNativeObjects: &fakeNativeObjects{
 			MockVolume: normalVolume,
 			MockPod:    pod,
