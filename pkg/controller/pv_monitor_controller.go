@@ -17,6 +17,7 @@ limitations under the License.
 package pv_monitor_controller
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -96,7 +97,7 @@ type PVMonitorOptions struct {
 
 // NewPVMonitorController creates PV monitor controller
 func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, eventRecorder record.EventRecorder, option *PVMonitorOptions) *PVMonitorController {
+	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, eventInformer coreinformers.EventInformer, eventRecorder record.EventRecorder, option *PVMonitorOptions) *PVMonitorController {
 
 	ctrl := &PVMonitorController{
 		csiConn:            conn,
@@ -137,11 +138,23 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 	ctrl.podLister = podInformer.Lister()
 	ctrl.podListerSynced = podInformer.Informer().HasSynced
 
+	eventInformer.Informer().AddIndexers(cache.Indexers{
+		util.DefaultEventIndexerName: func(obj interface{}) ([]string, error) {
+			event := obj.(*v1.Event)
+			if event != nil {
+				key := fmt.Sprintf("%s:%s:%s", string(event.InvolvedObject.UID), event.Type, event.Reason)
+				return []string{key}, nil
+			} else {
+				return nil, nil
+			}
+		},
+	})
+
 	if ctrl.enableNodeWatcher {
 		ctrl.nodeWatcher = NewNodeWatcher(ctrl.driverName, ctrl.client, ctrl.pvLister, ctrl.pvcLister, nodeInformer, ctrl.eventRecorder, ctrl.pvcToPodsCache, option.NodeWorkerExecuteInterval, option.NodeListAndAddInterval)
 	}
 
-	ctrl.pvChecker = handler.NewPVHealthConditionChecker(option.DriverName, conn, client, option.ContextTimeout, ctrl.pvcLister, ctrl.pvLister, ctrl.eventRecorder)
+	ctrl.pvChecker = handler.NewPVHealthConditionChecker(option.DriverName, conn, client, option.ContextTimeout, ctrl.pvcLister, ctrl.pvLister, eventInformer, ctrl.eventRecorder)
 
 	return ctrl
 }

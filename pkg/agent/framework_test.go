@@ -21,13 +21,15 @@ type fakeNativeObjects struct {
 	MockVolume *mock.MockVolume
 	MockNode   *mock.MockNode
 	MockPod    *mock.MockPod
+	MockEvent  *mock.MockEvent
 }
 
 type testCase struct {
 	name               string
 	fakeNativeObjects  *fakeNativeObjects
 	supportListVolumes bool
-	wantEvent          bool
+	wantAbnormalEvent  bool
+	hasRecoveryEvent   bool
 }
 
 func runTest(t *testing.T, tc *testCase) {
@@ -39,11 +41,16 @@ func runTest(t *testing.T, tc *testCase) {
 		tc.fakeNativeObjects.MockPod.NativePod,
 	}
 
+	if tc.hasRecoveryEvent {
+		nativeObjects = append(nativeObjects, tc.fakeNativeObjects.MockEvent.NativeEvent)
+	}
+
 	client := fake.NewSimpleClientset(nativeObjects...)
 	informers := informers.NewSharedInformerFactory(client, 0)
 	pvInformer := informers.Core().V1().PersistentVolumes()
 	pvcInformer := informers.Core().V1().PersistentVolumeClaims()
 	podInformer := informers.Core().V1().Pods()
+	eventInformer := informers.Core().V1().Events()
 	_, _, _, _, nodeServer, csiConn, err := mock.CreateMockServer(t)
 	assert.Nil(err)
 
@@ -66,9 +73,14 @@ func runTest(t *testing.T, tc *testCase) {
 	assert.Nil(err)
 
 	mockCSInodeServer(nodeServer, volumes)
-	pvMonitorAgent, err := NewPVMonitorAgent(client, mock.DriverName, csiConn, time.Second*600, 1*time.Minute, pvInformer, pvcInformer, podInformer, false, mock.DefaultKubeletPath, &eventRecorder)
+	pvMonitorAgent, err := NewPVMonitorAgent(client, mock.DriverName, csiConn, time.Second*600, 1*time.Minute, pvInformer, pvcInformer, podInformer, eventInformer, false, mock.DefaultKubeletPath, &eventRecorder)
 	assert.Nil(err)
 	assert.NotNil(pvMonitorAgent)
+
+	if tc.hasRecoveryEvent {
+		err = eventInformer.Informer().GetStore().Add(tc.fakeNativeObjects.MockEvent.NativeEvent)
+		assert.Nil(err)
+	}
 
 	pvMonitorAgent.addPodToQueue(tc.fakeNativeObjects.MockPod.NativePod)
 
@@ -77,10 +89,13 @@ func runTest(t *testing.T, tc *testCase) {
 	informers.Start(stopCh)
 	go pvMonitorAgent.Run(1, stopCh)
 
-	event, err := mock.WatchEvent(tc.wantEvent, eventStore)
-	if tc.wantEvent {
+	event, err := mock.WatchEvent(tc.wantAbnormalEvent, eventStore)
+	if tc.wantAbnormalEvent {
 		assert.Nil(err)
 		assert.EqualValues(event, mock.AbnormalEvent)
+	} else if tc.hasRecoveryEvent {
+		assert.Nil(err)
+		assert.EqualValues(event, mock.NormalEvent)
 	} else {
 		assert.EqualValues(mock.ErrorWatchTimeout.Error(), err.Error())
 	}

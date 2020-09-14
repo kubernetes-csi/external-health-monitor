@@ -33,6 +33,7 @@ const (
 	globalMountInGlobalPath      = "globalmount"
 	DefaultKubeletPodsDirName    = "pods"
 	DefaultKubeletVolumesDirName = "volumes"
+	DefaultEventIndexerName      = "event-uid"
 )
 
 // MakeDeviceMountPath generates device mount path

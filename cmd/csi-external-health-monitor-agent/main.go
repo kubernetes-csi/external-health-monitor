@@ -146,7 +146,7 @@ func main() {
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: clientset.CoreV1().Events(v1.NamespaceAll)})
 	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-agent-%s", storageDriver)})
 	monitorAgent, err := monitoragent.NewPVMonitorAgent(clientset, storageDriver, csiConn, *timeout, *monitorInterval, factory.Core().V1().PersistentVolumes(),
-		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), supportStageUnstage, *kubeletRootPath, eventRecorder)
+		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), factory.Core().V1().Events(), supportStageUnstage, *kubeletRootPath, eventRecorder)
 	if err != nil {
 		klog.Error(err.Error())
 		os.Exit(1)
