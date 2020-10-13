@@ -8,6 +8,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
+	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
 
 func Test_AbnormalVolume(t *testing.T) {
@@ -82,7 +83,7 @@ func Test_RecoveryEvent(t *testing.T) {
 			},
 			Condition: &csi.VolumeCondition{
 				Abnormal: false,
-				Message:  "Volume is healthy",
+				Message:  util.DefaultRecoveryEventMessage,
 			},
 		},
 		NativeVolume:      mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "normalVolume1", "pvcuid", &mock.FSVolumeMode, v1.VolumeBound),

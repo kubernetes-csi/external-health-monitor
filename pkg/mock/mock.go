@@ -30,7 +30,7 @@ var (
 	DefaultKubeletPath = "/var/lib/kubelet"
 	FSVolumeMode       = v1.PersistentVolumeBlock
 	AbnormalEvent      = "Warning VolumeConditionAbnormal Volume not found"
-	NormalEvent        = "Normal VolumeConditionNormal Volume is healthy"
+	NormalEvent        = "Normal VolumeConditionNormal The Volume returns to the healthy state"
 	ErrorWatchTimeout  = errors.New("watch event timeout")
 )
 
