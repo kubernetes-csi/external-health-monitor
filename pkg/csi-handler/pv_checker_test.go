@@ -44,9 +44,10 @@ func createMockPVHealthConditionChecker(t *testing.T) *MockPVHealthConditionChec
 			eventRecorder: &record.FakeRecorder{
 				Events: eventStore,
 			},
-			pvcLister:    informer.Core().V1().PersistentVolumeClaims().Lister(),
-			pvLister:     informer.Core().V1().PersistentVolumes().Lister(),
-			csiPVHandler: handler,
+			eventInformer: informer.Core().V1().Events(),
+			pvcLister:     informer.Core().V1().PersistentVolumeClaims().Lister(),
+			pvLister:      informer.Core().V1().PersistentVolumes().Lister(),
+			csiPVHandler:  handler,
 		},
 		pvcInformer:         informer.Core().V1().PersistentVolumeClaims(),
 		pvInformer:          informer.Core().V1().PersistentVolumes(),
@@ -59,26 +60,26 @@ func createMockPVHealthConditionChecker(t *testing.T) *MockPVHealthConditionChec
 func TestPVHealthConditionChecker_CheckControllerListVolumeStatuses(t *testing.T) {
 	assert := assert.New(t)
 	tests := []struct {
-		name      string
-		pvc       *v1.PersistentVolumeClaim
-		pv        *v1.PersistentVolume
-		volumeId  string
-		wantErr   bool
-		wantEvent bool
+		name              string
+		pvc               *v1.PersistentVolumeClaim
+		pv                *v1.PersistentVolume
+		volumeId          string
+		wantErr           bool
+		wantAbnormalEvent bool
 	}{
 		{
-			name:      "VolumeConditionAbnormal Case",
-			pvc:       mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:        mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "1", "uid", &mock.FSVolumeMode, v1.VolumeBound),
-			wantEvent: true,
-			volumeId:  "1",
+			name:              "VolumeConditionAbnormal Case",
+			pvc:               mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
+			pv:                mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "1", "uid", &mock.FSVolumeMode, v1.VolumeBound),
+			wantAbnormalEvent: true,
+			volumeId:          "1",
 		},
 		{
-			name:      "VolumeConditionNormal Case",
-			pvc:       mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:        mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "2", "uid", &mock.FSVolumeMode, v1.VolumeBound),
-			wantEvent: false,
-			volumeId:  "2",
+			name:              "VolumeConditionNormal Case",
+			pvc:               mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
+			pv:                mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "2", "uid", &mock.FSVolumeMode, v1.VolumeBound),
+			wantAbnormalEvent: false,
+			volumeId:          "2",
 		},
 		{
 			name:     "PV without CSI driver Case",
@@ -124,8 +125,8 @@ func TestPVHealthConditionChecker_CheckControllerListVolumeStatuses(t *testing.T
 				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
 			}
 
-			event, err := mock.WatchEvent(tt.wantEvent, checker.eventStore)
-			if tt.wantEvent {
+			event, err := mock.WatchEvent(tt.wantAbnormalEvent, checker.eventStore)
+			if tt.wantAbnormalEvent {
 				assert.Nil(err)
 				assert.EqualValues(event, mock.AbnormalEvent)
 			} else {
@@ -172,26 +173,26 @@ func TestPVHealthConditionChecker_GetVolumeHandle(t *testing.T) {
 func TestPVHealthConditionChecker_CheckControllerVolumeStatus(t *testing.T) {
 	assert := assert.New(t)
 	tests := []struct {
-		name      string
-		pv        *v1.PersistentVolume
-		pvc       *v1.PersistentVolumeClaim
-		volumeId  string
-		wantErr   bool
-		wantEvent bool
+		name              string
+		pv                *v1.PersistentVolume
+		pvc               *v1.PersistentVolumeClaim
+		volumeId          string
+		wantErr           bool
+		wantAbnormalEvent bool
 	}{
 		{
-			name:      "VolumeConditionAbnormal Case",
-			pvc:       mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:        mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "1", "uid", &mock.FSVolumeMode, v1.VolumeBound),
-			volumeId:  "1",
-			wantEvent: true,
+			name:              "VolumeConditionAbnormal Case",
+			pvc:               mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
+			pv:                mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "1", "uid", &mock.FSVolumeMode, v1.VolumeBound),
+			volumeId:          "1",
+			wantAbnormalEvent: true,
 		},
 		{
-			name:      "VolumeConditionNormal Case",
-			pvc:       mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:        mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "2", "uid", &mock.FSVolumeMode, v1.VolumeBound),
-			wantEvent: false,
-			volumeId:  "2",
+			name:              "VolumeConditionNormal Case",
+			pvc:               mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
+			pv:                mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "2", "uid", &mock.FSVolumeMode, v1.VolumeBound),
+			wantAbnormalEvent: false,
+			volumeId:          "2",
 		},
 		{
 			name:     "PV without CSI driver Case",
@@ -242,8 +243,8 @@ func TestPVHealthConditionChecker_CheckControllerVolumeStatus(t *testing.T) {
 				t.Errorf("PVHealthConditionChecker.CheckControllerVolumeStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			event, err := mock.WatchEvent(tt.wantEvent, checker.eventStore)
-			if tt.wantEvent {
+			event, err := mock.WatchEvent(tt.wantAbnormalEvent, checker.eventStore)
+			if tt.wantAbnormalEvent {
 				assert.Nil(err)
 				assert.EqualValues(event, mock.AbnormalEvent)
 			} else {
@@ -261,7 +262,7 @@ func TestPVHealthConditionChecker_CheckNodeVolumeStatus(t *testing.T) {
 		pvc                 *v1.PersistentVolumeClaim
 		pod                 *v1.Pod
 		wantErr             bool
-		wantEvent           bool
+		wantAbnormalEvent   bool
 		kubeletRootPath     string
 		volumeId            string
 		supportStageUnstage bool
@@ -338,8 +339,8 @@ func TestPVHealthConditionChecker_CheckNodeVolumeStatus(t *testing.T) {
 				t.Errorf("PVHealthConditionChecker.CheckNodeVolumeStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
-			event, err := mock.WatchEvent(tt.wantEvent, checker.eventStore)
-			if tt.wantEvent {
+			event, err := mock.WatchEvent(tt.wantAbnormalEvent, checker.eventStore)
+			if tt.wantAbnormalEvent {
 				assert.Nil(err)
 				assert.EqualValues(event, mock.AbnormalEvent)
 			} else {

@@ -30,6 +30,7 @@ var (
 	DefaultKubeletPath = "/var/lib/kubelet"
 	FSVolumeMode       = v1.PersistentVolumeBlock
 	AbnormalEvent      = "Warning VolumeConditionAbnormal Volume not found"
+	NormalEvent        = "Normal VolumeConditionNormal The Volume returns to the healthy state"
 	ErrorWatchTimeout  = errors.New("watch event timeout")
 )
 
@@ -44,6 +45,10 @@ type MockNode struct {
 
 type MockPod struct {
 	NativePod *v1.Pod
+}
+
+type MockEvent struct {
+	NativeEvent *v1.Event
 }
 
 type MockVolume struct {
@@ -199,6 +204,20 @@ func createPV(capacityGB int, pvcName, name, pvcNamespace string, pvcUID types.U
 	return pv
 }
 
+func createEvent(name, namespace, uid, eventType, eventReason string) *v1.Event {
+	return &v1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		InvolvedObject: v1.ObjectReference{
+			UID: types.UID(uid),
+		},
+		Type:   eventType,
+		Reason: eventReason,
+	}
+}
+
 func CreatePVWithoutCSIDriver(capacityGB int, pvcName, name, pvcNamespace string, pvcUID types.UID, volumeId string, volumePhase v1.PersistentVolumePhase, volumeMode *v1.PersistentVolumeMode) *v1.PersistentVolume {
 	pv := createPV(capacityGB, pvcName, name, pvcNamespace, pvcUID, volumeId, volumePhase, volumeMode)
 	pv.Spec.CSI = nil
@@ -234,6 +253,10 @@ func CreateNode(name, namespace string) *v1.Node {
 
 func CreatePod(name, namespace, volumeName, pvcName, nodeName, uid string, pvcReadOnly bool) *v1.Pod {
 	return createPod(name, namespace, volumeName, pvcName, nodeName, uid, pvcReadOnly)
+}
+
+func CreateEvent(name, namespace, uid, eventType, eventReason string) *v1.Event {
+	return createEvent(name, namespace, uid, eventType, eventReason)
 }
 
 func WatchEvent(want bool, eventChan <-chan string) (string, error) {

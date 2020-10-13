@@ -8,6 +8,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
+	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
 
 func Test_AbnormalVolume(t *testing.T) {
@@ -35,7 +36,7 @@ func Test_AbnormalVolume(t *testing.T) {
 			MockVolume: abnormalVolume,
 			MockPod:    pod,
 		},
-		wantEvent: true,
+		wantAbnormalEvent: true,
 	}
 
 	os.Setenv("NODE_NAME", "node")
@@ -67,7 +68,45 @@ func Test_NormalVolume(t *testing.T) {
 			MockVolume: normalVolume,
 			MockPod:    pod,
 		},
-		wantEvent: false,
+		wantAbnormalEvent: false,
+	}
+
+	os.Setenv("NODE_NAME", "node")
+	runTest(t, testCase)
+}
+
+func Test_RecoveryEvent(t *testing.T) {
+	normalVolume := &mock.MockVolume{
+		CSIVolume: &mock.CSIVolume{
+			Volume: &csi.Volume{
+				VolumeId: "normalVolume1",
+			},
+			Condition: &csi.VolumeCondition{
+				Abnormal: false,
+				Message:  util.DefaultRecoveryEventMessage,
+			},
+		},
+		NativeVolume:      mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "normalVolume1", "pvcuid", &mock.FSVolumeMode, v1.VolumeBound),
+		NativeVolumeClaim: mock.CreatePVC(1, 2, "pvc", "pvcuid", mock.DefaultNS, "pv", v1.ClaimBound),
+	}
+
+	pod := &mock.MockPod{
+		NativePod: mock.CreatePod("pod", mock.DefaultNS, "pv", "pvc", "node", "uid", false),
+	}
+
+	oldAbnormalEvent := &mock.MockEvent{
+		NativeEvent: mock.CreateEvent("event", "", "uid", v1.EventTypeWarning, "VolumeConditionAbnormal"),
+	}
+
+	testCase := &testCase{
+		name: "recovery_test_case1",
+		fakeNativeObjects: &fakeNativeObjects{
+			MockVolume: normalVolume,
+			MockPod:    pod,
+			MockEvent:  oldAbnormalEvent,
+		},
+		wantAbnormalEvent: false,
+		hasRecoveryEvent:  true,
 	}
 
 	os.Setenv("NODE_NAME", "node")

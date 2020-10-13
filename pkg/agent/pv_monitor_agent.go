@@ -18,6 +18,7 @@ package pv_monitor_agent
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"time"
 
@@ -75,7 +76,7 @@ type PVMonitorAgent struct {
 
 // NewPVMonitorAgent create pv monitor agent
 func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grpc.ClientConn, timeout time.Duration, monitorInterval time.Duration, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, supportStageUnstage bool, kubeletRootPath string, eventRecorder record.EventRecorder) (*PVMonitorAgent, error) {
+	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, eventInformer coreinformers.EventInformer, supportStageUnstage bool, kubeletRootPath string, eventRecorder record.EventRecorder) (*PVMonitorAgent, error) {
 
 	agent := &PVMonitorAgent{
 		supportStageUnstage: supportStageUnstage,
@@ -105,7 +106,19 @@ func NewPVMonitorAgent(client kubernetes.Interface, driverName string, conn *grp
 	agent.podLister = podInformer.Lister()
 	agent.podListerSynced = podInformer.Informer().HasSynced
 
-	agent.pvChecker = handler.NewPVHealthConditionChecker(driverName, conn, client, timeout, agent.pvcLister, agent.pvLister, agent.eventRecorder)
+	eventInformer.Informer().AddIndexers(cache.Indexers{
+		util.DefaultEventIndexerName: func(obj interface{}) ([]string, error) {
+			event := obj.(*v1.Event)
+			if event != nil {
+				key := fmt.Sprintf("%s:%s:%s", string(event.InvolvedObject.UID), event.Type, event.Reason)
+				return []string{key}, nil
+			} else {
+				return nil, nil
+			}
+		},
+	})
+
+	agent.pvChecker = handler.NewPVHealthConditionChecker(driverName, conn, client, timeout, agent.pvcLister, agent.pvLister, eventInformer, agent.eventRecorder)
 	agent.nodeName = os.Getenv(util.EnvNodeName)
 	if agent.nodeName == "" {
 		return nil, errors.New("failed to get node name")
