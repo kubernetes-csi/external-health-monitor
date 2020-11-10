@@ -14,6 +14,8 @@ metadata:
   name: csi-external-health-monitor-controller
   # replace with non-default namespace name
   namespace: default
+  labels:
+    app: csi-health-monitor
 
 ---
 # Health monitor controller must be able to work with PVs, PVCs, Nodes and Pods
@@ -21,6 +23,8 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: external-health-monitor-controller-runner
+  labels:
+    app: csi-health-monitor
 rules:
   - apiGroups: [""]
     resources: ["persistentvolumes"]
@@ -43,6 +47,8 @@ kind: ClusterRoleBinding
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: csi-external-health-monitor-controller-role
+  labels:
+    app: csi-health-monitor
 subjects:
   - kind: ServiceAccount
     name: csi-external-health-monitor-controller
@@ -62,6 +68,8 @@ metadata:
   # replace with non-default namespace name
   namespace: default
   name: external-health-monitor-controller-cfg
+  labels:
+    app: csi-health-monitor
 rules:
 - apiGroups: ["coordination.k8s.io"]
   resources: ["leases"]
@@ -74,6 +82,8 @@ metadata:
   name: csi-external-health-monitor-controller-role-cfg
   # replace with non-default namespace name
   namespace: default
+  labels:
+    app: csi-health-monitor
 subjects:
   - kind: ServiceAccount
     name: csi-external-health-monitor-controller

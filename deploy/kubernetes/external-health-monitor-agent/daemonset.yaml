@@ -6,6 +6,8 @@ kind: DaemonSet
 apiVersion: apps/v1
 metadata:
   name: csi-external-health-monitor-agent
+  labels:
+    app: csi-health-monitor
 spec:
   selector:
     matchLabels:
