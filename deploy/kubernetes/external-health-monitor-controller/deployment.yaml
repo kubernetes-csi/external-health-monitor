@@ -19,11 +19,14 @@ spec:
       serviceAccount: csi-external-health-monitor-controller
       containers:
         - name: csi-external-health-monitor-controller
-          image: k8s.gcr.io/sig-storage/csi-external-health-monitor-controller:v0.1.0
+          # Currently, canary is needed for healthz/leader-election.
+          image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:canary
+          imagePullPolicy: Always
           args:
             - "--v=5"
             - "--csi-address=$(ADDRESS)"
             - "--leader-election"
+            - "--metrics-address=:8080"
           env:
             - name: ADDRESS
               value: /var/lib/csi/sockets/pluginproxy/mock.socket
@@ -31,9 +34,20 @@ spec:
           volumeMounts:
             - name: socket-dir
               mountPath: /var/lib/csi/sockets/pluginproxy/
-
+          ports:
+            - containerPort: 8080
+              name: metrics
+              protocol: TCP
+          livenessProbe:
+            failureThreshold: 1
+            httpGet:
+              path: /healthz/leader-election
+              port: metrics
+            initialDelaySeconds: 10
+            timeoutSeconds: 10
+            periodSeconds: 20
         - name: mock-driver
-          image: quay.io/k8scsi/mock-driver:canary
+          image: k8s.gcr.io/sig-storage/mock-driver:v4.0.2
           imagePullPolicy: "IfNotPresent"
           env:
             - name: CSI_ENDPOINT

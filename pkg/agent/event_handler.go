@@ -18,7 +18,7 @@ package pv_monitor_agent
 
 import (
 	v1 "k8s.io/api/core/v1"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 )
 
 func (agent *PVMonitorAgent) addPodToQueue(pod *v1.Pod) {
