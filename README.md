@@ -86,7 +86,7 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 
 - `leader-election-namespace <namespace>`: The namespace where the leader election resource exists. Defaults to the pod namespace if not set.
 
-- `metrics-address`: The TCP network address where the prometheus metrics endpoint will run (example: :8080, which corresponds to port 8080 on local host). The default is the empty string, which means the metrics endpoint is disabled.
+- `metrics-address`: The TCP network address where the Prometheus metrics endpoint and leader election health check will run (example: :8080, which corresponds to port 8080 on local host). The default is the empty string, which means the metrics and leader election check endpoint is disabled.
 
 - `metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is /metrics.
 
@@ -140,6 +140,22 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 - `timeout <duration>`: Timeout of all calls to CSI Driver. It should be set to value that accommodates the majority of `NodeGetVolumeStats` calls. 15 seconds is used by default.
 
 - `kubelet-root-path`: Path to kubelet. It is used to generate the volume path. `/var/lib/kubelet` by default if not set.
+
+### HTTP endpoint
+
+Both sidecars optionally exposes an HTTP endpoint at
+address:port specified by `--metrics-address` argument. When set,
+these two paths may be exposed:
+
+* Metrics path, as set by `--metrics-path` argument (default is
+  `/metrics`) - both sidecars.
+* Leader election health check at `/healthz/leader-election` - only
+  in the External Health Monitor Controller.
+  It is recommended to run a liveness probe against this endpoint when
+  leader election is used to kill a external-health-monitor-controller
+  leader that fails to connect to the API server to renew its leadership. See
+  https://github.com/kubernetes-csi/csi-lib-utils/issues/66 for
+  details.
 
 ## Community, discussion, contribution, and support
 

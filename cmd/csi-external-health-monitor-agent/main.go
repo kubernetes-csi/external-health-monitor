@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -31,7 +32,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
-	"k8s.io/klog"
+	"k8s.io/klog/v2"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
@@ -124,7 +125,18 @@ func main() {
 	}
 	klog.V(2).Infof("CSI driver name: %q", storageDriver)
 	metricsManager.SetDriverName(storageDriver)
-	metricsManager.StartMetricsEndpoint(*metricsAddress, *metricsPath)
+
+	// Prepare HTTP endpoint for metrics
+	if *metricsAddress != "" {
+		mux := http.NewServeMux()
+		metricsManager.RegisterToServer(mux, *metricsPath)
+		go func() {
+			err := http.ListenAndServe(*metricsAddress, mux)
+			if err != nil {
+				klog.Fatalf("Failed to start Prometheus metrics endpoint on specified address (%q) and path (%q): %s", *metricsAddress, *metricsPath, err)
+			}
+		}()
+	}
 
 	supportNodeGetVolumeCondition, err := supportNodeGetVolumeCondition(ctx, csiConn)
 	if err != nil {
