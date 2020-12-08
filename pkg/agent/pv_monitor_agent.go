@@ -202,6 +202,10 @@ func (agent *PVMonitorAgent) checkPVWorker() {
 
 	err = agent.pvChecker.CheckNodeVolumeStatus(agent.kubeletRootPath, agent.supportStageUnstage, pv, pod)
 	if err != nil {
+		if apierrs.IsNotFound(err) {
+			klog.V(3).Infof("Volume %q is not found with pod %q on node %q, ignoring", pv.Name, podWithPV.podName, agent.nodeName)
+			return
+		}
 		klog.Errorf("check node volume status error: %+v", err)
 	}
 
