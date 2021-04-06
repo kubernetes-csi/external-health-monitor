@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: all csi-external-health-monitor-controller csi-external-health-monitor-agent clean test
+.PHONY: all csi-external-health-monitor-controller clean test
 
-CMDS=csi-external-health-monitor-controller csi-external-health-monitor-agent
+CMDS=csi-external-health-monitor-controller 
 all: build
 
 include release-tools/build.make
