@@ -272,12 +272,12 @@ func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
 }
 
 func (watcher *NodeWatcher) deleteNode(key string, node *v1.Node) {
-	klog.Infof("node:%s is deleted, so mark the local PVs on it", node.Name)
+	klog.Infof("node:%s is deleted, so mark the PVs on the node", node.Name)
 
-	// mark all local PVs on this node
+	// mark all PVs on this node
 	err := watcher.markPVCsAndPodsOnUnhealthyNode(node)
 	if err != nil {
-		klog.Errorf("marking local PVs failed: %v", err)
+		klog.Errorf("marking PVs failed: %v", err)
 		// must re-enqueue here, because we can not get this from informer(node-lister) any more
 		watcher.enqueueWork(node)
 	}

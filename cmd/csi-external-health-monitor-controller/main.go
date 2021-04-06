@@ -63,7 +63,7 @@ var (
 	volumeListAndAddInterval = flag.Duration("volume-list-add-interval", 5*time.Minute, "Time interval for listing volumes and add them to queue")
 	nodeListAndAddInterval   = flag.Duration("node-list-add-interval", 5*time.Minute, "Time interval for listing nodess and add them to queue")
 	workerThreads            = flag.Uint("worker-threads", 10, "Number of pv monitor worker threads")
-	enableNodeWatcher        = flag.Bool("enable-node-watcher", false, "whether we want to enable node watcher, node watcher will only have effects on local PVs now, it may be useful for block storages too, will take this into account later.")
+	enableNodeWatcher        = flag.Bool("enable-node-watcher", false, "Indicates whether the node watcher is enabled or not.")
 
 	enableLeaderElection    = flag.Bool("leader-election", false, "Enable leader election.")
 	leaderElectionNamespace = flag.String("leader-election-namespace", "", "Namespace where the leader election resource lives. Defaults to the pod namespace if not set.")
