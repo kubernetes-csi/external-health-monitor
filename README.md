@@ -1,44 +1,47 @@
-# External Health Monitor
+# Volume Health Monitor
 
-The External Health Monitor is part of Kubernetes implementation of [Container Storage Interface (CSI)](https://github.com/container-storage-interface/spec). It was introduced as an Alpha feature in Kubernetes v1.19.
+The Volume Health Monitor is part of Kubernetes implementation of [Container Storage Interface (CSI)](https://github.com/container-storage-interface/spec). It was introduced as an Alpha feature in Kubernetes v1.19. In Kubernetes 1.21, a second Alpha was done due to a design change.
 
 ## Overview
 
-The [External Health Monitor](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/1432-volume-health-monitor) is implemented as two components: `External Health Monitor Controller` and `External Health Monitor Agent`.
+The [Volume Health Monitor](https://github.com/kubernetes/enhancements/tree/master/keps/sig-storage/1432-volume-health-monitor) is implemented in two components: `External Health Monitor Controller` and `Kubelet`.
+
+When this feature was first introduced in Kubernetes 1.19, there was an `External Health Monitor Agent` that monitors volume health from the node side. In the Kubernetes 1.21 release, the node side volume health monitoring logic was moved to Kubelet to avoid duplicate CSI RPC calls.
 
 - External Health Monitor Controller:
   - The external health monitor controller will be deployed as a sidecar together with the CSI controller driver, similar to how the external-provisioner sidecar is deployed.
   - Trigger controller RPC to check the health condition of the CSI volumes.
   - The external controller sidecar will also watch for node failure events. This component can be enabled via a flag.
 
-- External Health Monitor Agent:
-  - The external health monitor agent will be deployed as a sidecar together with the CSI node driver on every Kubernetes worker node.
-  - Trigger node RPC to check volume's mounting conditions.
+- Kubelet:
+  - In addition to existing volume stats collected already, Kubelet will also check volume's mounting conditions collected from the same CSI node RPC and log events to Pods if volume condition is abnormal.
 
-The External Health Monitor needs to invoke the following CSI interfaces.
+The Volume Health Monitoring feature need to invoke the following CSI interfaces.
 
 - External Health Monitor Controller:
   - ListVolumes (If both `ListVolumes` and `ControllerGetVolume` are supported, `ListVolumes` will be used)
   - ControllerGetVolume
-- External Health Monitor Agent:
+- Kubelet:
   - NodeGetVolumeStats
+  - This feature in Kubelet is controlled by an Alpha feature gate `CSIVolumeHealth`.
 
 ## Compatibility
 
 This information reflects the head of this branch.
 
-| Compatible with CSI Version                                                                | Container Image             | [Min K8s Version](https://kubernetes-csi.github.io/docs/kubernetes-compatibility.html#minimum-version) | Recommend K8s version |
-| ------------------------------------------------------------------------------------------ | ----------------------------| --------------- | -------------------- |
-| [CSI Spec v1.3.0](https://github.com/container-storage-interface/spec/releases/tag/v1.3.0) | k8s.gcr.io/sig-storage.csi-external-health-monitor-controller | 1.19         | 1.19              |
-| [CSI Spec v1.3.0](https://github.com/container-storage-interface/spec/releases/tag/v1.3.0) | k8s.gcr.io/sig-storage/csi-external-health-monitor-agent  | 1.19     | 1.19              |
+| Compatible with CSI Version                                                                | Container Image             |
+| ------------------------------------------------------------------------------------------ | ----------------------------|
+| [CSI Spec v1.3.0](https://github.com/container-storage-interface/spec/releases/tag/v1.3.0) | k8s.gcr.io/sig-storage.csi-external-health-monitor-controller |
 
 ## Driver Support
 
-Currently, the CSI volume health monitoring interfaces are only implemented in the Mock Driver.
+Currently, the CSI volume health monitoring interfaces are only implemented in the Mock Driver and the CSI Hostpath driver.
 
 ## Usage
 
-External Health Monitor needs to be deployed with CSI driver.
+External Health Monitor Controller needs to be deployed with CSI driver.
+
+Alpha feature gate `CSIVolumeHealth` needs to be enabled for the node side monitoring to take effect.
 
 ### Build && Push Image
 
@@ -48,12 +51,10 @@ You can run the command below in the root directory of the project.
 make container GOFLAGS_VENDOR=$( [ -d vendor ] && echo '-mod=vendor' )
 ```
 
-And then, you can tag and push it to your own image repository.
+And then, you can tag and push the csi-external-health-monitor-controller image to your own image repository.
 
 ```bash
 docker tag csi-external-health-monitor-controller:latest <custom-image-repo-addr>/csi-external-health-monitor-controller:<custom-image-tag>
-
-docker tag csi-external-health-monitor-agent:latest <custom-image-repo-addr>/csi-external-health-monitor-agent:<custom-image-tag>
 ```
 
 ### External Health Monitor Controller
@@ -63,18 +64,11 @@ cd external-health-monitor
 kubectl create -f deploy/kubernetes/external-health-monitor-controller
 ```
 
-### External Health Monitor Agent
-
-```bash
-kubectl create -f deploy/kubernetes/external-health-monitor-agent
-```
-
 You can run `kubectl get pods` command to confirm if they are deployed on your cluster successfully.
 
-Check logs of external health monitor controller and agent as follows:
+Check logs of external health monitor controller as follows:
 
 -  `kubectl logs <leader-of-external-health-monitor-controller-container-name> -c csi-external-health-monitor-controller`
--  `kubectl logs <external-health-monitor-agent-container-name> -c csi-external-health-monitor-agent`
 
 Check if there are events on PVCs or Pods that report abnormal volume condition when the volume you are using is abnormal.
 
@@ -115,50 +109,6 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 - `node-list-add-interval <duration>`: Interval of listing nodes and adding them. It is used together with `monitor-interval` and `enable-node-watcher` by nodeWatcher.
 
 - `metrics-address`: (deprecated) The TCP network address where the Prometheus metrics endpoint will run (example: :8080, which corresponds to port 8080 on local host). The default is the empty string, which means the metrics and leader election check endpoint is disabled.
-
-## csi-external-health-monitor-agent-sidecar-command-line-options
-
-### Important optional arguments that are highly recommended to be used
-
-- `http-endpoint`: The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080` which corresponds to port 8080 on local host). The default is empty string, which means the server is disabled.
-
-- `metrics-path`: The HTTP path where prometheus metrics will be exposed. Default is /metrics.
-
-- `worker-threads`: Number of worker threads for running volume checker by invoking RPC interface `NodeGetVolumeStats`. Default value is 10.
-
-### Other recognized arguments
-
-- `kubeconfig <path>`: Path to Kubernetes client configuration that the external-health-monitor-agent uses to connect to Kubernetes API server. When omitted, the default token provided by Kubernetes will be used. This option is useful only when the external-health-monitor-agent does not run as a Kubernetes pod, e.g. for debugging.
-
-- `resync <duration>`: Internal resync interval when the monitor agent re-evaluates all existing resource objects that it was watching and tries to fulfill them. It does not affect re-tries of failed calls! It should be used only when there is a bug in Kubernetes watch logic. The default is ten mintiues.
-
-- `monitor-interval <duration>`: Interval of monitoring volume health condition by invoking RPC interface `NodeGetVolumeStats`. You can adjust it to change the frequency of the evaluation process. One minute by default if not set.
-
-- `csiAddress <path-to-csi>`: This is the path to the CSI Driver socket inside the pod that the external-health-monitor-agent container will use to issue CSI operations (/run/csi/socket is used by default).
-
-- `version`: Prints the current version of external-health-monitor-agent.
-
-- `timeout <duration>`: Timeout of all calls to CSI Driver. It should be set to value that accommodates the majority of `NodeGetVolumeStats` calls. 15 seconds is used by default.
-
-- `kubelet-root-path`: Path to kubelet. It is used to generate the volume path. `/var/lib/kubelet` by default if not set.
-
-- `metrics-address`: (deprecated) The TCP network address where the prometheus metrics endpoint will run (example: :8080, which corresponds to port 8080 on localhost). The default is the empty string, which means the metrics endpoint is disabled.
-
-### HTTP endpoint
-
-Both sidecars optionally exposes an HTTP endpoint at
-address:port, specified by the `--http-endpoint` argument. When set, these two
-paths may be exposed:
-
-* Metrics path, as set by `--metrics-path` argument (default is
-  `/metrics`) - both sidecars.
-* Leader election health check at `/healthz/leader-election` - only
-  in the External Health Monitor Controller.
-  It is recommended to run a liveness probe against this endpoint when
-  leader election is used to kill a external-health-monitor-controller
-  leader that fails to connect to the API server to renew its leadership. See
-  https://github.com/kubernetes-csi/csi-lib-utils/issues/66 for
-  details.
 
 ## Community, discussion, contribution, and support
 
