@@ -1,6 +1,7 @@
 # Volume Health Monitor
 
-The Volume Health Monitor is part of Kubernetes implementation of [Container Storage Interface (CSI)](https://github.com/container-storage-interface/spec). It was introduced as an Alpha feature in Kubernetes v1.19. In Kubernetes 1.21, a second Alpha was done due to a design change.
+The Volume Health Monitor is part of Kubernetes implementation of [Container Storage Interface (CSI)](https://github.com/container-storage-interface/spec).
+It was introduced as an Alpha feature in Kubernetes v1.19. In Kubernetes 1.21, a second Alpha was done due to a design change.
 
 ## Overview
 
@@ -35,7 +36,7 @@ This information reflects the head of this branch.
 
 ## Driver Support
 
-Currently, the CSI volume health monitoring interfaces are only implemented in the Mock Driver and the CSI Hostpath driver.
+Currently, CSI volume health monitoring interfaces are only implemented in the Mock Driver and the CSI Hostpath driver.
 
 ## Usage
 
