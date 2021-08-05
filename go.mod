@@ -13,9 +13,9 @@ require (
 	golang.org/x/oauth2 v0.0.0-20201208152858-08078c50e5b5 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/grpc v1.38.0
-	k8s.io/api v0.22.0-rc.0
-	k8s.io/apimachinery v0.22.0-rc.0
-	k8s.io/client-go v0.22.0-rc.0
-	k8s.io/component-base v0.22.0-rc.0 // indirect
+	k8s.io/api v0.22.0
+	k8s.io/apimachinery v0.22.0
+	k8s.io/client-go v0.22.0
+	k8s.io/component-base v0.22.0 // indirect
 	k8s.io/klog/v2 v2.9.0
 )
