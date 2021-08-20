@@ -19,8 +19,7 @@ spec:
       serviceAccount: csi-external-health-monitor-controller
       containers:
         - name: csi-external-health-monitor-controller
-          # Currently, canary is needed for healthz/leader-election.
-          image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:canary
+          image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.4.0
           imagePullPolicy: Always
           args:
             - "--v=5"
