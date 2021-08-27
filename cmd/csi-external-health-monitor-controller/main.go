@@ -18,12 +18,12 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
+	flag "github.com/spf13/pflag"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -74,6 +75,11 @@ var (
 	metricsAddress = flag.String("metrics-address", "", "(deprecated) The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
 	httpEndpoint   = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
 	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+
+	retryIntervalStart = flag.Duration("retry-interval-start", time.Second, "Initial retry interval of failed pv monitoring. It doubles with each failure, up to retry-interval-max. Default is 1 second.")
+	retryIntervalMax   = flag.Duration("retry-interval-max", 5*time.Minute, "Maximum retry interval of failed pv monitoring. Default is 5 minutes.")
+	kubeAPIQPS         = flag.Float32("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
+	kubeAPIBurst       = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 )
 
 var (
@@ -111,6 +117,9 @@ func main() {
 		klog.Error("option -worker-threads must be greater than zero")
 		os.Exit(1)
 	}
+
+	config.QPS = *kubeAPIQPS
+	config.Burst = *kubeAPIBurst
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -210,8 +219,18 @@ func main() {
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: clientset.CoreV1().Events(v1.NamespaceAll)})
 	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-controller-%s", option.DriverName)})
 
-	monitorController := monitorcontroller.NewPVMonitorController(clientset, csiConn, factory.Core().V1().PersistentVolumes(),
-		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), factory.Core().V1().Nodes(), factory.Core().V1().Events(), eventRecorder, &option)
+	monitorController := monitorcontroller.NewPVMonitorController(
+		clientset,
+		csiConn,
+		factory.Core().V1().PersistentVolumes(),
+		factory.Core().V1().PersistentVolumeClaims(),
+		factory.Core().V1().Pods(),
+		factory.Core().V1().Nodes(),
+		factory.Core().V1().Events(),
+		eventRecorder,
+		&option,
+		workqueue.NewItemExponentialFailureRateLimiter(*retryIntervalStart, *retryIntervalMax),
+	)
 
 	run := func(ctx context.Context) {
 		stopCh := ctx.Done()
@@ -224,7 +243,13 @@ func main() {
 	} else {
 		// Name of config map with leader election lock
 		lockName := "external-health-monitor-leader-" + storageDriver
-		le := leaderelection.NewLeaderElection(clientset, lockName, run)
+		// create a new clientset for leader election
+		leClientset, err := kubernetes.NewForConfig(config)
+		if err != nil {
+			klog.Fatalf("Failed to create leaderelection client: %v", err)
+		}
+		le := leaderelection.NewLeaderElection(leClientset, lockName, run)
+
 		if *httpEndpoint != "" {
 			le.PrepareHealthCheck(mux, leaderelection.DefaultHealthCheckTimeout)
 		}

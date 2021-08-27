@@ -9,6 +9,7 @@ require (
 	github.com/imdario/mergo v0.3.11 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.10.0
 	github.com/kubernetes-csi/csi-test/v3 v3.1.2-0.20200722022205-189919973123
+	github.com/spf13/pflag v1.0.5
 	github.com/stretchr/testify v1.7.0
 	golang.org/x/oauth2 v0.0.0-20201208152858-08078c50e5b5 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

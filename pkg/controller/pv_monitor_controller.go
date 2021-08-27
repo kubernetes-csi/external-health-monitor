@@ -96,8 +96,18 @@ type PVMonitorOptions struct {
 }
 
 // NewPVMonitorController creates PV monitor controller
-func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, eventInformer coreinformers.EventInformer, eventRecorder record.EventRecorder, option *PVMonitorOptions) *PVMonitorController {
+func NewPVMonitorController(
+	client kubernetes.Interface,
+	conn *grpc.ClientConn,
+	pvInformer coreinformers.PersistentVolumeInformer,
+	pvcInformer coreinformers.PersistentVolumeClaimInformer,
+	podInformer coreinformers.PodInformer,
+	nodeInformer coreinformers.NodeInformer,
+	eventInformer coreinformers.EventInformer,
+	eventRecorder record.EventRecorder,
+	option *PVMonitorOptions,
+	contentRateLimiter workqueue.RateLimiter,
+) *PVMonitorController {
 
 	ctrl := &PVMonitorController{
 		csiConn:            conn,
@@ -106,7 +116,7 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 		enableNodeWatcher:  option.EnableNodeWatcher,
 		client:             client,
 		driverName:         option.DriverName,
-		pvQueue:            workqueue.NewNamed("csi-monitor-pv-queue"),
+		pvQueue:            workqueue.NewNamedRateLimitingQueue(contentRateLimiter, "csi-monitor-pv-queue"),
 
 		pvcToPodsCache: util.NewPVCToPodsCache(),
 		pvEnqueued:     make(map[string]bool),

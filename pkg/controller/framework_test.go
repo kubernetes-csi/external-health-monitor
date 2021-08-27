@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/client-go/util/workqueue"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
@@ -92,7 +94,17 @@ func runTest(t *testing.T, tc *testCase) {
 	}
 
 	mockCSIcontrollerServer(controllerServer, tc.supportListVolumes, volumes)
-	pvMonitorController := NewPVMonitorController(client, csiConn, pvInformer, pvcInformer, podInformer, nodeInformer, eventInformer, &eventRecorder, option)
+	pvMonitorController := NewPVMonitorController(client,
+		csiConn,
+		pvInformer,
+		pvcInformer,
+		podInformer,
+		nodeInformer,
+		eventInformer,
+		&eventRecorder,
+		option,
+		workqueue.NewItemExponentialFailureRateLimiter(1*time.Millisecond, 1*time.Minute),
+	)
 	assert.NotNil(pvMonitorController)
 
 	if tc.hasRecoveryEvent {
