@@ -71,9 +71,17 @@ type NodeWatcher struct {
 }
 
 // NewNodeWatcher creates a node watcher object that will watch the nodes
-func NewNodeWatcher(driverName string, client kubernetes.Interface, volumeLister corelisters.PersistentVolumeLister,
-	pvcLister corelisters.PersistentVolumeClaimLister, nodeInformer coreinformers.NodeInformer,
-	recorder record.EventRecorder, pvcToPodsCache *util.PVCToPodsCache, nodeWorkerExecuteInterval time.Duration, nodeListAndAddInterval time.Duration) *NodeWatcher {
+func NewNodeWatcher(driverName string,
+	client kubernetes.Interface,
+	volumeLister corelisters.PersistentVolumeLister,
+	pvcLister corelisters.PersistentVolumeClaimLister,
+	nodeInformer coreinformers.NodeInformer,
+	recorder record.EventRecorder,
+	pvcToPodsCache *util.PVCToPodsCache,
+	nodeWorkerExecuteInterval time.Duration,
+	nodeListAndAddInterval time.Duration,
+	contentRateLimiter workqueue.RateLimiter,
+) *NodeWatcher {
 
 	watcher := &NodeWatcher{
 		driverName:                driverName,
@@ -83,7 +91,7 @@ func NewNodeWatcher(driverName string, client kubernetes.Interface, volumeLister
 		recorder:                  recorder,
 		volumeLister:              volumeLister,
 		pvcLister:                 pvcLister,
-		nodeQueue:                 workqueue.NewNamed("nodes"),
+		nodeQueue:                 workqueue.NewNamedRateLimitingQueue(contentRateLimiter, "nodes"),
 		nodeFirstBrokenMap:        make(map[string]time.Time),
 		nodeEverMarkedDown:        make(map[string]bool),
 		pvcToPodsCache:            pvcToPodsCache,

@@ -161,7 +161,18 @@ func NewPVMonitorController(
 	})
 
 	if ctrl.enableNodeWatcher {
-		ctrl.nodeWatcher = NewNodeWatcher(ctrl.driverName, ctrl.client, ctrl.pvLister, ctrl.pvcLister, nodeInformer, ctrl.eventRecorder, ctrl.pvcToPodsCache, option.NodeWorkerExecuteInterval, option.NodeListAndAddInterval)
+		ctrl.nodeWatcher = NewNodeWatcher(
+			ctrl.driverName,
+			ctrl.client,
+			ctrl.pvLister,
+			ctrl.pvcLister,
+			nodeInformer,
+			ctrl.eventRecorder,
+			ctrl.pvcToPodsCache,
+			option.NodeWorkerExecuteInterval,
+			option.NodeListAndAddInterval,
+			contentRateLimiter,
+		)
 	}
 
 	ctrl.pvChecker = handler.NewPVHealthConditionChecker(option.DriverName, conn, client, option.ContextTimeout, ctrl.pvcLister, ctrl.pvLister, eventInformer, ctrl.eventRecorder)
