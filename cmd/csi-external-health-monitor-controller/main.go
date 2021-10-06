@@ -74,6 +74,7 @@ var (
 	metricsAddress = flag.String("metrics-address", "", "(deprecated) The TCP network address where the prometheus metrics endpoint will listen (example: `:8080`). The default is empty string, which means metrics endpoint is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
 	httpEndpoint   = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
 	metricsPath    = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+	enableNodeDeployment = flag.Bool("node-deployment", false, "Enable deploying the sidecar controller together with a CSI driver on nodes to manage snapshots for node-local volumes. Off by default.")
 )
 
 var (
@@ -84,6 +85,11 @@ func main() {
 	klog.InitFlags(nil)
 	flag.Set("logtostderr", "true")
 	flag.Parse()
+
+	node := os.Getenv("NODE_NAME")
+	if *enableNodeDeployment && node == "" {
+		klog.Fatal("The NODE_NAME environment variable must be set when using --enable-node-deployment.")
+	}
 
 	if *showVersion {
 		fmt.Println(os.Args[0], version)
