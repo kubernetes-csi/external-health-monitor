@@ -20,6 +20,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"github.com/kubernetes-csi/external-provisioner/pkg/capacity/topology"
 	"net/http"
 	"os"
 	"time"
@@ -224,6 +225,28 @@ func main() {
 		factory.Start(stopCh)
 		monitorController.Run(int(*workerThreads), stopCh)
 	}
+
+	var topologyInformer topology.Informer
+	if nodeDeployment == nil {
+		topologyInformer = topology.NewNodeTopology(
+			provisionerName,
+			clientset,
+			factory.Core().V1().Nodes(),
+			factory.Storage().V1().CSINodes(),
+			workqueue.NewNamedRateLimitingQueue(rateLimiter, "csitopology"),
+		)
+	} else {
+		var segment topology.Segment
+		if nodeDeployment.NodeInfo.AccessibleTopology != nil {
+			for key, value := range nodeDeployment.NodeInfo.AccessibleTopology.Segments {
+				segment = append(segment, topology.SegmentEntry{Key: key, Value: value})
+			}
+		}
+		klog.Infof("producing CSIStorageCapacity objects with fixed topology segment %s", segment)
+		topologyInformer = topology.NewFixedNodeTopology(&segment)
+	}
+	go topologyInformer.RunWorker(context.Background())
+
 
 	if !*enableLeaderElection {
 		run(context.TODO())
