@@ -37,6 +37,7 @@ var (
 type CSIVolume struct {
 	Volume    *csi.Volume
 	Condition *csi.VolumeCondition
+	IsBlock   bool
 }
 
 type MockNode struct {

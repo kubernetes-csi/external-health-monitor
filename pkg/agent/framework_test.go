@@ -105,9 +105,13 @@ func runTest(t *testing.T, tc *testCase) {
 
 func mockCSInodeServer(nodeServer *driver.MockNodeServer, objects []*mock.CSIVolume) {
 	for _, volume := range objects {
+		volumePath := "/var/lib/kubelet/pods/uid/volumes/kubernetes.io~csi/pv/mount"
+		if volume.IsBlock {
+			volumePath = "/var/lib/kubelet/pods/uid/volumeDevices/kubernetes.io~csi/pv"
+		}
 		in := &csi.NodeGetVolumeStatsRequest{
 			VolumeId:          volume.Volume.VolumeId,
-			VolumePath:        "/var/lib/kubelet/pods/uid/volumes/kubernetes.io~csi/pv/mount",
+			VolumePath:        volumePath,
 			StagingTargetPath: "",
 		}
 		out := &csi.NodeGetVolumeStatsResponse{
