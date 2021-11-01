@@ -325,9 +325,12 @@ func TestPVHealthConditionChecker_CheckNodeVolumeStatus(t *testing.T) {
 			if err := checker.pvcInformer.Informer().GetStore().Add(tt.pvc); err != nil {
 				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
 			}
+			isBlock := *tt.pv.Spec.VolumeMode == v1.PersistentVolumeBlock
+			volumePath := util.GetVolumePath(tt.kubeletRootPath, tt.pv.Name, string(tt.pod.ObjectMeta.UID), isBlock)
+
 			in := &csi.NodeGetVolumeStatsRequest{
 				VolumeId:          tt.volumeId,
-				VolumePath:        util.GetVolumePath(tt.kubeletRootPath, tt.pv.Name, string(tt.pod.ObjectMeta.UID)),
+				VolumePath:        volumePath,
 				StagingTargetPath: "",
 			}
 			out := &csi.NodeGetVolumeStatsResponse{

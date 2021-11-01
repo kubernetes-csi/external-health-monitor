@@ -25,8 +25,12 @@ func TestGetVolumePath(t *testing.T) {
 	originalPVName := "kubernetes.io/empty-dir"
 	podUID := "b84244b0-dc4a-4f11-ba7f-0ce5b6c6f831"
 	expectedVolumePath := filepath.Join(kubeletRootDir, "pods", podUID, "volumes", EscapeQualifiedName(CSIPluginName), "kubernetes.io~empty-dir", "mount")
-	actualVolumePath := GetVolumePath(kubeletRootDir, originalPVName, podUID)
+	actualVolumePath := GetVolumePath(kubeletRootDir, originalPVName, podUID, false)
 	assert.Equal(expectedVolumePath, actualVolumePath)
+
+	expectedBlockVolumePath := filepath.Join(kubeletRootDir, "pods", podUID, "volumeDevices", EscapeQualifiedName(CSIPluginName), "kubernetes.io~empty-dir")
+	actualBlockVolumePath := GetVolumePath(kubeletRootDir, originalPVName, podUID, true)
+	assert.Equal(expectedBlockVolumePath, actualBlockVolumePath)
 }
 
 func TestMakeDeviceMountPath(t *testing.T) {

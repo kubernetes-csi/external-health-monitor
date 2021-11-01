@@ -27,14 +27,15 @@ import (
 
 const (
 	// CSI Plugin Name
-	CSIPluginName                = "kubernetes.io/csi"
-	DefaultKubeletPluginsDirName = "plugins"
-	persistentVolumeInGlobalPath = "pv"
-	globalMountInGlobalPath      = "globalmount"
-	DefaultKubeletPodsDirName    = "pods"
-	DefaultKubeletVolumesDirName = "volumes"
-	DefaultEventIndexerName      = "event-uid"
-	DefaultRecoveryEventMessage  = "The Volume returns to the healthy state"
+	CSIPluginName                     = "kubernetes.io/csi"
+	DefaultKubeletPluginsDirName      = "plugins"
+	persistentVolumeInGlobalPath      = "pv"
+	globalMountInGlobalPath           = "globalmount"
+	DefaultKubeletPodsDirName         = "pods"
+	DefaultKubeletVolumesDirName      = "volumes"
+	DefaultKubeletBlockVolumesDirName = "volumeDevices"
+	DefaultEventIndexerName           = "event-uid"
+	DefaultRecoveryEventMessage       = "The Volume returns to the healthy state"
 )
 
 // MakeDeviceMountPath generates device mount path
@@ -50,14 +51,19 @@ func MakeDeviceMountPath(kubeletRootDir string, pv *v1.PersistentVolume) (string
 }
 
 // GetVolumePath generates volume path
-func GetVolumePath(kubeletRootDir, pvName, podUID string) string {
+func GetVolumePath(kubeletRootDir, pvName, podUID string, isBlock bool) string {
 	volID := EscapeQualifiedName(pvName)
 
 	podsDir := path.Join(kubeletRootDir, DefaultKubeletPodsDirName)
 	podDir := path.Join(podsDir, podUID)
 	podVolumesDir := path.Join(podDir, DefaultKubeletVolumesDirName)
+	if isBlock {
+		podVolumesDir = path.Join(podDir, DefaultKubeletBlockVolumesDirName)
+	}
 	podVolumeDir := filepath.Join(podVolumesDir, EscapeQualifiedName(CSIPluginName), volID)
-
+	if isBlock {
+		return podVolumeDir
+	}
 	return path.Join(podVolumeDir, "/mount")
 }
 
