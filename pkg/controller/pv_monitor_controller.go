@@ -243,7 +243,7 @@ func (ctrl *PVMonitorController) checkPVWorker() {
 			// PV was deleted in the meantime, ignore.
 			ctrl.Lock()
 			// delete pv from cache here so that we do not need to handle pv deletion events
-			delete(ctrl.pvEnqueued, pv.Name)
+			delete(ctrl.pvEnqueued, pvName)
 			ctrl.Unlock()
 			klog.V(3).Infof("PV %q deleted, ignoring", pvName)
 			return
