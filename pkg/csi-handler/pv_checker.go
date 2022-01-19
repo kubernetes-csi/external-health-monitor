@@ -117,7 +117,7 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 			checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
 		} else {
 			// Send recovery event if the abnormal event was sent and unexpired
-			return checker.sendRecoveryEventToPVC(pvc, volumeCondition)
+			checker.sendRecoveryEventToPVC(pvc, volumeCondition)
 		}
 	}
 
@@ -172,7 +172,7 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
 	} else {
 		// Send recovery event if the abnormal event was sent and unexpired
-		return checker.sendRecoveryEventToPVC(pvc, volumeCondition)
+		checker.sendRecoveryEventToPVC(pvc, volumeCondition)
 	}
 
 	return nil
@@ -230,20 +230,17 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 // sendRecoveryEventToPVC sends the recovery event to the pvc
 // If the volume condition is normal and abnormal event wasn't expired,
 // PVHealthConditionChecker should send recovery event.
-func (checker *PVHealthConditionChecker) sendRecoveryEventToPVC(pvc *v1.PersistentVolumeClaim, volumeCondition *VolumeConditionResult) error {
+func (checker *PVHealthConditionChecker) sendRecoveryEventToPVC(pvc *v1.PersistentVolumeClaim, volumeCondition *VolumeConditionResult) {
 	pvcUID := string(pvc.ObjectMeta.GetUID())
 	key := fmt.Sprintf("%s:%s:%s", pvcUID, v1.EventTypeWarning, "VolumeConditionAbnormal")
 	events, err := checker.eventInformer.Informer().GetIndexer().ByIndex(util.DefaultEventIndexerName, key)
 	if err != nil {
 		klog.Warningf("Get abnormal event from indexer failed: %+v", err)
-		return nil
 	}
 
 	if len(events) > 0 {
 		checker.eventRecorder.Event(pvc, v1.EventTypeNormal, "VolumeConditionNormal", util.DefaultRecoveryEventMessage)
 	}
-
-	return nil
 }
 
 // sendRecoveryEventToPod sends the recovery event to the pod
