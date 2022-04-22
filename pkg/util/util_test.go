@@ -36,13 +36,18 @@ func TestGetVolumePath(t *testing.T) {
 func TestMakeDeviceMountPath(t *testing.T) {
 	assert := assert.New(t)
 	// Negative Case: pvName is nil
-	_, err := MakeDeviceMountPath("", &v1.PersistentVolume{})
+	_, err := MakeDeviceMountPath("", &v1.PersistentVolume{}, false)
 	assert.NotNil(err)
 
 	// Positive Case: pvName is "pv-test"
 	expectedMountPath := "/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-431ceccf-7999-11ea-ab4a-fa163ffd8213/globalmount"
 	pv := &v1.PersistentVolume{}
 	pv.Name = "pvc-431ceccf-7999-11ea-ab4a-fa163ffd8213"
-	actualMountPath, err := MakeDeviceMountPath(kubeletRootDir, pv)
+
+	actualMountPath, err := MakeDeviceMountPath(kubeletRootDir, pv, false)
 	assert.Equal(expectedMountPath, actualMountPath)
+
+	expectedBlockMountPath := "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/staging/pvc431ceccf-7999-11ea-ab4a-fa163ffd8213"
+	actualBlockMountPath, err := MakeDeviceMountPath(kubeletRootDir, pv, true)
+	assert.Equal(expectedBlockMountPath, actualBlockMountPath)
 }

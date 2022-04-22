@@ -39,15 +39,19 @@ const (
 )
 
 // MakeDeviceMountPath generates device mount path
-func MakeDeviceMountPath(kubeletRootDir string, pv *v1.PersistentVolume) (string, error) {
+func MakeDeviceMountPath(kubeletRootDir string, pv *v1.PersistentVolume, isBlock bool) (string, error) {
 	if pv.Name == "" {
 		return "", fmt.Errorf("makeDeviceMountPath failed, pv name empty")
 	}
 
 	pluginsDir := path.Join(kubeletRootDir, DefaultKubeletPluginsDirName)
 	csiPluginDir := path.Join(pluginsDir, CSIPluginName)
+	if !isBlock {
+		return path.Join(csiPluginDir, persistentVolumeInGlobalPath, pv.Name, globalMountInGlobalPath), nil
+	} else {
+		return path.Join(csiPluginDir, DefaultKubeletBlockVolumesDirName, "staging", pv.Name), nil
+	}
 
-	return path.Join(csiPluginDir, persistentVolumeInGlobalPath, pv.Name, globalMountInGlobalPath), nil
 }
 
 // GetVolumePath generates volume path

@@ -207,7 +207,7 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 	volumePath = util.GetVolumePath(kubeletRootPath, pv.Name, string(pod.UID), isBlock)
 
 	if supportStageUnstage {
-		stagingTargetPath, err = util.MakeDeviceMountPath(kubeletRootPath, pv)
+		stagingTargetPath, err = util.MakeDeviceMountPath(kubeletRootPath, pv, isBlock)
 		if err != nil {
 			return err
 		}
