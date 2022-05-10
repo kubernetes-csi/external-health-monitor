@@ -19,7 +19,7 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	"github.com/kubernetes-csi/csi-test/v3/driver"
+	"github.com/kubernetes-csi/csi-test/v4/driver"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 )
