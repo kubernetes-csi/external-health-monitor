@@ -78,6 +78,7 @@ func New(address string) (*grpc.ClientConn, error) {
 
 	return conn, nil
 }
+
 func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 	*driver.MockCSIDriver,
 	*driver.MockIdentityServer,
@@ -89,6 +90,7 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 	controllerServer := driver.NewMockControllerServer(mockController)
 	identityServer := driver.NewMockIdentityServer(mockController)
 	nodeServer := driver.NewMockNodeServer(mockController)
+	defer mockController.Finish()
 	drv := driver.NewMockCSIDriver(&driver.MockCSIDriverServers{
 		Identity:   identityServer,
 		Controller: controllerServer,

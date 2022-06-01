@@ -68,6 +68,7 @@ func runTest(t *testing.T, tc *testCase) {
 	}
 
 	_, _, _, controllerServer, _, csiConn, err := mock.CreateMockServer(t)
+
 	assert.Nil(err)
 
 	eventStore := make(chan string, 1)
@@ -75,9 +76,7 @@ func runTest(t *testing.T, tc *testCase) {
 		Events: eventStore,
 	}
 
-	var (
-		volumes []*mock.CSIVolume
-	)
+	var volumes []*mock.CSIVolume
 
 	// Inject test cases
 	volumes = append(volumes, tc.fakeNativeObjects.MockVolume.CSIVolume)
@@ -138,10 +137,8 @@ func mockCSIcontrollerServer(csiControllerServer *driver.MockControllerServer, s
 			Entries:   volumeResponseEntries,
 			NextToken: "",
 		}
-
 		csiControllerServer.EXPECT().ListVolumes(gomock.Any(), in).Return(out, nil).Times(100000)
 	} else {
-
 		for _, volume := range objects {
 
 			in := &csi.ControllerGetVolumeRequest{
