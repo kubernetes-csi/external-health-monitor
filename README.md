@@ -31,7 +31,7 @@ This information reflects the head of this branch.
 
 | Compatible with CSI Version                                                                | Container Image             |
 | ------------------------------------------------------------------------------------------ | ----------------------------|
-| [CSI Spec v1.3.0](https://github.com/container-storage-interface/spec/releases/tag/v1.3.0) | k8s.gcr.io/sig-storage.csi-external-health-monitor-controller |
+| [CSI Spec v1.3.0](https://github.com/container-storage-interface/spec/releases/tag/v1.3.0) | registry.k8s.io/sig-storage.csi-external-health-monitor-controller |
 
 ## Driver Support
 
