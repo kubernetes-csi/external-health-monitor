@@ -11,7 +11,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
-	"github.com/kubernetes-csi/csi-test/v4/driver"
+	"github.com/kubernetes-csi/csi-test/v5/driver"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 	"github.com/stretchr/testify/assert"
