@@ -7,7 +7,7 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
-	github.com/kubernetes-csi/csi-lib-utils v0.11.0
+	github.com/kubernetes-csi/csi-lib-utils v0.12.0
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
 	github.com/stretchr/testify v1.8.1
 	google.golang.org/grpc v1.51.0
@@ -47,7 +47,7 @@ require (
 	github.com/prometheus/common v0.37.0 // indirect
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/net v0.3.1-0.20221206200815-1e63c2f08a10 // indirect
+	golang.org/x/net v0.4.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
 	golang.org/x/sys v0.3.0 // indirect
 	golang.org/x/term v0.3.0 // indirect
@@ -59,7 +59,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/component-base v0.26.0-rc.0 // indirect
+	k8s.io/component-base v0.26.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20221012153701-172d655c2280 // indirect
 	k8s.io/utils v0.0.0-20221107191617-1a15be271d1d // indirect
 	sigs.k8s.io/json v0.0.0-20220713155537-f223a00ba0e2 // indirect
