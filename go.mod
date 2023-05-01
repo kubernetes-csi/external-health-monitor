@@ -9,7 +9,7 @@ require (
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.12.0
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
-	github.com/stretchr/testify v1.8.1
+	github.com/stretchr/testify v1.8.2
 	google.golang.org/grpc v1.51.0
 	k8s.io/api v0.27.0
 	k8s.io/apimachinery v0.27.0
