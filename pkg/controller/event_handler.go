@@ -33,6 +33,23 @@ func (ctrl *PVMonitorController) pvAdded(obj interface{}) {
 	ctrl.pvEnqueued[pv.Name] = true
 }
 
+func (ctrl *PVMonitorController) pvUpdated(oldObj, newObj interface{}) {
+	newPV := newObj.(*v1.PersistentVolume)
+	if newPV.Status.Phase != v1.VolumeBound || newPV.Spec.CSI == nil || newPV.Spec.CSI.Driver != ctrl.driverName {
+		return
+	}
+
+	oldPV := oldObj.(*v1.PersistentVolume)
+	if oldPV.Status.Phase == newPV.Status.Phase {
+		return
+	}
+
+	ctrl.Lock()
+	defer ctrl.Unlock()
+	ctrl.pvQueue.Add(newPV.Name)
+	ctrl.pvEnqueued[newPV.Name] = true
+}
+
 func (ctrl *PVMonitorController) podAdded(obj interface{}) {
 	ctrl.pvcToPodsCache.AddPod(obj.(*v1.Pod))
 }

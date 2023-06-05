@@ -118,8 +118,8 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 
 	// PV informer
 	pvInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: ctrl.pvAdded,
-		// we do not care about PV changes, so do not need UpdateFunc here.
+		AddFunc:    ctrl.pvAdded,
+		UpdateFunc: ctrl.pvUpdated,
 		// deleted PVs will not be readded to the queue, so do not need DeleteFunc here
 	})
 	ctrl.pvLister = pvInformer.Lister()
