@@ -19,7 +19,7 @@ spec:
       serviceAccount: csi-external-health-monitor-controller
       containers:
         - name: csi-external-health-monitor-controller
-          image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.4.0
+          image: gcr.io/k8s-staging-sig-storage/csi-external-health-monitor-controller:v0.9.0
           imagePullPolicy: Always
           args:
             - "--v=5"
