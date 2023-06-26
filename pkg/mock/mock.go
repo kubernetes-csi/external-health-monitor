@@ -2,7 +2,6 @@ package mock
 
 import (
 	"errors"
-	"io/ioutil"
 	"path/filepath"
 	"testing"
 	"time"
@@ -108,8 +107,7 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 
 func tempDir(t *testing.T) string {
 	assert := assert.New(t)
-	dir, err := ioutil.TempDir("", "external-provisioner-test")
-	assert.Nil(err)
+	dir := t.TempDir()
 	return dir
 }
 
