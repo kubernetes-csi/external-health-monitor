@@ -11,8 +11,8 @@ require (
 	github.com/kubernetes-csi/csi-test/v5 v5.0.0
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.55.0
-	k8s.io/api v0.28.0-rc.0
-	k8s.io/apimachinery v0.28.0-rc.0
+	k8s.io/api v0.29.0-alpha.0
+	k8s.io/apimachinery v0.29.0-alpha.0
 	k8s.io/client-go v0.28.0-rc.0
 	k8s.io/klog/v2 v2.100.1
 )
