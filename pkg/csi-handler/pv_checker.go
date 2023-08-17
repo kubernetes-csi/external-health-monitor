@@ -23,14 +23,13 @@ import (
 
 	"google.golang.org/grpc"
 
-	"k8s.io/klog/v2"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
@@ -86,18 +85,18 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 
 	for _, pv := range pvs {
 		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != checker.driverName {
-			klog.Infof("csi source is nil or the volume is not managed by this checker/monitor")
+			klog.InfoS("CSI source is nil or the volume is not managed by this checker/monitor")
 			continue
 		}
 
 		if pv.Status.Phase != v1.VolumeBound {
-			klog.Infof("PV: %s status is not bound", pv.Name)
+			klog.InfoS("PV status is not bound", "pv", pv.Name)
 			continue
 		}
 
 		volumeHandle, err := checker.GetVolumeHandle(pv)
 		if err != nil {
-			klog.Errorf("Get volume handle error: %+v", err)
+			klog.ErrorS(err, "Get volume handle error")
 			continue
 		}
 
@@ -108,7 +107,7 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 
 		pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.Errorf("Get PVC error: %+v", err)
+			klog.ErrorS(err, "Get PVC error")
 			continue
 		}
 
@@ -148,7 +147,7 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 
 	volumeHandle, err := checker.GetVolumeHandle(pv)
 	if err != nil {
-		klog.Errorf("Get volume handle error: %+v", err)
+		klog.ErrorS(err, "Get volume handle error")
 		return err
 	}
 
@@ -193,7 +192,7 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 
 	volumeHandle, err := checker.GetVolumeHandle(pv)
 	if err != nil {
-		klog.Errorf("Get volume handle error: %+v", err)
+		klog.ErrorS(err, "Get volume handle error")
 		return err
 	}
 
@@ -235,7 +234,7 @@ func (checker *PVHealthConditionChecker) sendRecoveryEventToPVC(pvc *v1.Persiste
 	key := fmt.Sprintf("%s:%s:%s", pvcUID, v1.EventTypeWarning, "VolumeConditionAbnormal")
 	events, err := checker.eventInformer.Informer().GetIndexer().ByIndex(util.DefaultEventIndexerName, key)
 	if err != nil {
-		klog.Warningf("Get abnormal event from indexer failed: %+v", err)
+		klog.InfoS("Get abnormal event from indexer failed", "err", err)
 	}
 
 	if len(events) > 0 {
@@ -251,7 +250,7 @@ func (checker *PVHealthConditionChecker) sendRecoveryEventToPod(pod *v1.Pod, vol
 	key := fmt.Sprintf("%s:%s:%s", podUID, v1.EventTypeWarning, "VolumeConditionAbnormal")
 	events, err := checker.eventInformer.Informer().GetIndexer().ByIndex(util.DefaultEventIndexerName, key)
 	if err != nil {
-		klog.Warningf("Get abnormal event from indexer failed: %+v", err)
+		klog.InfoS("Get abnormal event from indexer failed", "err", err)
 		return nil
 	}
 

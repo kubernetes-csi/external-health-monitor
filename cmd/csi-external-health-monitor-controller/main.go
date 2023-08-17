@@ -32,6 +32,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/component-base/featuregate"
+	"k8s.io/component-base/logs"
+	logsapi "k8s.io/component-base/logs/api/v1"
+	_ "k8s.io/component-base/logs/json/register"
 	"k8s.io/klog/v2"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
@@ -81,19 +85,26 @@ var (
 )
 
 func main() {
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
+	fg := featuregate.NewFeatureGate()
+	logsapi.AddFeatureGates(fg)
+	c := logsapi.NewLoggingConfiguration()
+	logsapi.AddGoFlags(c, flag.CommandLine)
+	logs.InitLogs()
 	flag.Parse()
+	if err := logsapi.ValidateAndApply(c, fg); err != nil {
+		klog.ErrorS(err, "LoggingConfiguration is invalid")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
+	}
 
 	if *showVersion {
 		fmt.Println(os.Args[0], version)
 		return
 	}
-	klog.Infof("Version: %s", version)
+	klog.InfoS("Version", "version", version)
 
 	if *metricsAddress != "" && *httpEndpoint != "" {
-		klog.Error("only one of `--metrics-address` and `--http-endpoint` can be set.")
-		os.Exit(1)
+		klog.ErrorS(nil, "Only one of `--metrics-address` and `--http-endpoint` can be set.")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	addr := *metricsAddress
 	if addr == "" {
@@ -103,19 +114,19 @@ func main() {
 	// Create the client config. Use kubeconfig if given, otherwise assume in-cluster.
 	config, err := buildConfig(*kubeconfig)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to build a Kubernetes config")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	if *workerThreads == 0 {
-		klog.Error("option -worker-threads must be greater than zero")
-		os.Exit(1)
+		klog.ErrorS(nil, "Option --worker-threads must be greater than zero")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to create a Clientset")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	factory := informers.NewSharedInformerFactory(clientset, *resync)
@@ -125,14 +136,14 @@ func main() {
 	// Connect to CSI.
 	csiConn, err := connection.Connect(*csiAddress, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to connect to the CSI driver")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	err = rpc.ProbeForever(csiConn, *timeout)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to probe the CSI driver")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	// Find driver name.
@@ -140,10 +151,10 @@ func main() {
 	defer cancel()
 	storageDriver, err := rpc.GetDriverName(ctx, csiConn)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to get the CSI driver name")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
-	klog.V(2).Infof("CSI driver name: %q", storageDriver)
+	klog.V(2).InfoS("CSI driver name", "driver", storageDriver)
 	metricsManager.SetDriverName(storageDriver)
 
 	// Prepare HTTP endpoint for metrics + leader election healthz
@@ -151,45 +162,46 @@ func main() {
 	if addr != "" {
 		metricsManager.RegisterToServer(mux, *metricsPath)
 		go func() {
-			klog.Infof("ServeMux listening at %q", addr)
+			klog.InfoS("ServeMux listening", "address", addr)
 			err := http.ListenAndServe(addr, mux)
 			if err != nil {
-				klog.Fatalf("Failed to start HTTP server at specified address (%q) and metrics path (%q): %s", addr, *metricsPath, err)
+				klog.ErrorS(err, "Failed to start HTTP server at specified address and metrics path", "address", addr, "path", *metricsPath)
+				klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 			}
 		}()
 	}
 
 	supportsService, err := supportsPluginControllerService(ctx, csiConn)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Plugin Controller Service")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if !supportsService {
-		klog.V(2).Infof("CSI driver does not support Plugin Controller Service, exiting")
-		os.Exit(1)
+		klog.V(2).InfoS("CSI driver does not support Plugin Controller Service, exiting")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	supportControllerListVolumes, err := supportControllerListVolumes(ctx, csiConn)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service ListVolumes")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	supportControllerGetVolume, err := supportControllerGetVolume(ctx, csiConn)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service GetVolume")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	supportControllerVolumeCondition, err := supportControllerVolumeCondition(ctx, csiConn)
 	if err != nil {
-		klog.Error(err.Error())
-		os.Exit(1)
+		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service VolumeCondition")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	if (!supportControllerListVolumes && !supportControllerGetVolume) || !supportControllerVolumeCondition {
-		klog.V(2).Infof("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
-		os.Exit(1)
+		klog.V(2).InfoS("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
+		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	option := monitorcontroller.PVMonitorOptions{
@@ -238,7 +250,8 @@ func main() {
 		le.WithRetryPeriod(*leaderElectionRetryPeriod)
 
 		if err := le.Run(); err != nil {
-			klog.Fatalf("failed to initialize leader election: %v", err)
+			klog.ErrorS(err, "Failed to initialize leader election")
+			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}
 

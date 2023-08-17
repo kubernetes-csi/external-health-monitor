@@ -19,8 +19,6 @@ package pv_monitor_controller
 import (
 	"time"
 
-	"k8s.io/klog/v2"
-
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,6 +29,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
@@ -114,20 +113,20 @@ func (watcher *NodeWatcher) enqueueWork(obj interface{}) {
 	}
 	objName, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		klog.Errorf("failed to get key from object: %v", err)
+		klog.ErrorS(err, "Failed to get key from object")
 		return
 	}
-	klog.V(6).Infof("enqueued %q for sync", objName)
+	klog.V(6).InfoS("Enqueued ObjectName for sync", "objectName", objName)
 	watcher.nodeQueue.Add(objName)
 }
 
 // addNodesToQueue adds all existing nodes to queue periodically
 func (watcher *NodeWatcher) addNodesToQueue() {
-	klog.V(4).Infof("resyncing Node watcher")
+	klog.V(4).InfoS("Resyncing Node watcher")
 
 	nodes, err := watcher.nodeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.Warningf("cannot list nodes: %s", err)
+		klog.InfoS("Cannot list nodes", "err", err)
 		return
 	}
 	for _, node := range nodes {
@@ -139,7 +138,7 @@ func (watcher *NodeWatcher) addNodesToQueue() {
 func (watcher *NodeWatcher) Run(stopCh <-chan struct{}) {
 	defer watcher.nodeQueue.ShutDown()
 	if !cache.WaitForCacheSync(stopCh, watcher.nodeListerSynced) {
-		klog.Errorf("Cannot sync cache")
+		klog.ErrorS(nil, "Cannot sync cache")
 		return
 	}
 
@@ -157,11 +156,11 @@ func (watcher *NodeWatcher) WatchNodes() {
 		}
 		defer watcher.nodeQueue.Done(keyObj)
 		key := keyObj.(string)
-		klog.V(4).Infof("WatchNode: %s", key)
+		klog.V(4).InfoS("WatchNode", "node", key)
 
 		_, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
-			klog.Errorf("error getting name of node %q from informer: %v", key, err)
+			klog.ErrorS(err, "Error getting name of node from informer", "node", key)
 			return false
 		}
 		node, err := watcher.nodeLister.Get(name)
@@ -172,7 +171,7 @@ func (watcher *NodeWatcher) WatchNodes() {
 			return false
 		}
 		if !errors.IsNotFound(err) {
-			klog.V(2).Infof("error getting node %q from informer: %v", key, err)
+			klog.V(2).ErrorS(err, "Error getting node from informer", "node", key)
 			return false
 		}
 
@@ -183,7 +182,7 @@ func (watcher *NodeWatcher) WatchNodes() {
 	}
 	for {
 		if quit := workFunc(); quit {
-			klog.Infof("volume worker queue shutting down")
+			klog.InfoS("Volume worker queue shutting down")
 			return
 		}
 	}
@@ -206,18 +205,18 @@ func (watcher *NodeWatcher) updateNode(key string, node *v1.Node) {
 				// when node recovers and send recovery event successfully, remove the node from the map
 				delete(watcher.nodeEverMarkedDown, node.Name)
 			} else {
-				klog.Errorf("clean node failure message error: %+v", err)
+				klog.ErrorS(err, "Clean node failure message error")
 			}
 		}
 		return
 	}
 
 	if watcher.isNodeBroken(node) {
-		klog.Infof("node: %s is broken", node.Name)
+		klog.InfoS("Node is broken", "node", node.Name)
 		// mark all PVCs/Pods on this node
 		err := watcher.markPVCsAndPodsOnUnhealthyNode(node)
 		if err != nil {
-			klog.Errorf("mark PVCs on not ready node failed, re-enqueue")
+			klog.ErrorS(err, "Mark PVCs on not ready node failed, re-enqueue")
 			// if error happened, re-enqueue
 			watcher.enqueueWork(node)
 			return
@@ -258,7 +257,7 @@ func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
 				if timeInterval.Seconds() > DefaultNodeNotReadyTimeDuration.Seconds() {
 					return true
 				}
-				klog.V(6).Infof("node:%s is not ready, but less than 5 minutes", node.Name)
+				klog.V(6).InfoS("Node is not ready, but less than 5 minutes", "node", node.Name)
 				return false
 			}
 
@@ -272,12 +271,12 @@ func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
 }
 
 func (watcher *NodeWatcher) deleteNode(key string, node *v1.Node) {
-	klog.Infof("node:%s is deleted, so mark the PVs on the node", node.Name)
+	klog.InfoS("Node is deleted, so mark the PVs on the node", "node", node.Name)
 
 	// mark all PVs on this node
 	err := watcher.markPVCsAndPodsOnUnhealthyNode(node)
 	if err != nil {
-		klog.Errorf("marking PVs failed: %v", err)
+		klog.ErrorS(err, "Marking PVs failed")
 		// must re-enqueue here, because we can not get this from informer(node-lister) any more
 		watcher.enqueueWork(node)
 	}
@@ -286,7 +285,7 @@ func (watcher *NodeWatcher) deleteNode(key string, node *v1.Node) {
 func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error {
 	pvs, err := watcher.volumeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.Warningf("cannot list pvs: %s", err)
+		klog.InfoS("Cannot list pvs", "err", err)
 		return err
 	}
 
@@ -317,7 +316,7 @@ func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error
 		// TODO: add events to Pods instead
 		pvc, err := watcher.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.Errorf("get PVC[%s] from PVC lister error: %+v", pv.Spec.ClaimRef.Namespace+"/"+pv.Spec.ClaimRef.Name, err)
+			klog.ErrorS(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
 			return err
 		}
 
@@ -332,7 +331,7 @@ func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error
 func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(node *v1.Node) error {
 	pvs, err := watcher.volumeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.Warningf("cannot list pvs: %s", err)
+		klog.InfoS("Cannot list pvs", "err", err)
 		return err
 	}
 
@@ -362,7 +361,7 @@ func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(node *v1.Node) error 
 
 		pvc, err := watcher.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.Errorf("get PVC[%s] from PVC lister error: %+v", pv.Spec.ClaimRef.Namespace+"/"+pv.Spec.ClaimRef.Name, err)
+			klog.ErrorS(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
 			return err
 		}
 
