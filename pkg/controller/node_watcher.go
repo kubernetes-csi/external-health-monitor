@@ -171,7 +171,7 @@ func (watcher *NodeWatcher) WatchNodes() {
 			return false
 		}
 		if !errors.IsNotFound(err) {
-			klog.V(2).ErrorS(err, "Error getting node from informer", "node", key)
+			klog.V(2).InfoS("Error getting node from informer", "node", key, "err", err)
 			return false
 		}
 
