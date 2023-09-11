@@ -21,8 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog/v2"
-
 	"google.golang.org/grpc"
 
 	v1 "k8s.io/api/core/v1"
@@ -35,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
+	"k8s.io/klog/v2"
 
 	handler "github.com/kubernetes-csi/external-health-monitor/pkg/csi-handler"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
@@ -163,11 +162,11 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
 	defer ctrl.pvQueue.ShutDown()
 
-	klog.Infof("Starting CSI External PV Health Monitor Controller")
-	defer klog.Infof("Shutting down CSI External PV Health Monitor Controller")
+	klog.InfoS("Starting CSI External PV Health Monitor Controller")
+	defer klog.InfoS("Shutting down CSI External PV Health Monitor Controller")
 
 	if !cache.WaitForCacheSync(stopCh, ctrl.pvcListerSynced, ctrl.pvListerSynced, ctrl.podListerSynced) {
-		klog.Errorf("Cannot sync cache")
+		klog.ErrorS(nil, "Cannot sync cache")
 		return
 	}
 
@@ -187,7 +186,7 @@ func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
 		go wait.Until(func() {
 			err := ctrl.AddPVsToQueue()
 			if err != nil {
-				klog.Errorf("Failed to reconcile volumes: %v", err)
+				klog.ErrorS(err, "Failed to reconcile volumes")
 			}
 		}, ctrl.VolumeListAndAddInterval, stopCh)
 	}
@@ -198,7 +197,7 @@ func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
 func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes() {
 	err := ctrl.pvChecker.CheckControllerListVolumeStatuses()
 	if err != nil {
-		klog.Errorf("check controller volume status error: %+v", err)
+		klog.ErrorS(err, "Check controller volume status error")
 	}
 }
 
@@ -234,7 +233,7 @@ func (ctrl *PVMonitorController) checkPVWorker() {
 	defer ctrl.pvQueue.Done(key)
 
 	pvName := key.(string)
-	klog.V(4).Infof("Started PV processing PV %q", pvName)
+	klog.V(4).InfoS("Started PV processing", "pv", pvName)
 
 	// get PV to process
 	pv, err := ctrl.pvLister.Get(pvName)
@@ -245,27 +244,27 @@ func (ctrl *PVMonitorController) checkPVWorker() {
 			// delete pv from cache here so that we do not need to handle pv deletion events
 			delete(ctrl.pvEnqueued, pvName)
 			ctrl.Unlock()
-			klog.V(3).Infof("PV %q deleted, ignoring", pvName)
+			klog.V(3).InfoS("PV deleted, ignoring", "pv", pvName)
 			return
 		}
-		klog.Errorf("Error getting PersistentVolume %q: %v", pvName, err)
+		klog.ErrorS(err, "Error getting PersistentVolume", "pv", pvName)
 		ctrl.pvQueue.Add(pvName)
 		return
 	}
 
 	if pv.DeletionTimestamp != nil {
-		klog.Infof("PV: %s is being deleted now, skip checking health condition", pv.Name)
+		klog.InfoS("PV is being deleted now, skip checking health condition", "pv", pv.Name)
 		return
 	}
 
 	if pv.Status.Phase != v1.VolumeBound {
-		klog.Infof("PV: %s status is not bound, remove it from the queue", pv.Name)
+		klog.InfoS("PV status is not bound, remove it from the queue", "pv", pv.Name)
 		return
 	}
 
 	err = ctrl.pvChecker.CheckControllerVolumeStatus(pv)
 	if err != nil {
-		klog.Errorf("check controller volume status error: %+v", err)
+		klog.ErrorS(err, "Check controller volume status error")
 	}
 
 	// re-enqueue anyway
