@@ -157,7 +157,7 @@ func createPVC(requestGB, capacityGB int, name, uid, namespace, volumeName strin
 			UID:       types.UID(uid),
 		},
 		Spec: v1.PersistentVolumeClaimSpec{
-			Resources: v1.ResourceRequirements{
+			Resources: v1.VolumeResourceRequirements{
 				Requests: map[v1.ResourceName]resource.Quantity{
 					v1.ResourceStorage: request,
 				},
