@@ -11,10 +11,10 @@ require (
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.59.0
-	k8s.io/api v0.29.0-rc.1
-	k8s.io/apimachinery v0.29.0-rc.1
-	k8s.io/client-go v0.29.0-rc.1
-	k8s.io/component-base v0.29.0-rc.1
+	k8s.io/api v0.29.0
+	k8s.io/apimachinery v0.29.0
+	k8s.io/client-go v0.29.0
+	k8s.io/component-base v0.29.0
 	k8s.io/klog/v2 v2.110.1
 )
 
@@ -79,10 +79,10 @@ require (
 	sigs.k8s.io/yaml v1.3.0 // indirect
 )
 
-replace k8s.io/api => k8s.io/api v0.29.0-rc.1
+replace k8s.io/api => k8s.io/api v0.29.0
 
-replace k8s.io/apimachinery => k8s.io/apimachinery v0.29.0-rc.1
+replace k8s.io/apimachinery => k8s.io/apimachinery v0.29.0
 
-replace k8s.io/client-go => k8s.io/client-go v0.29.0-rc.1
+replace k8s.io/client-go => k8s.io/client-go v0.29.0
 
-replace k8s.io/component-base => k8s.io/component-base v0.29.0-rc.1
+replace k8s.io/component-base => k8s.io/component-base v0.29.0
