@@ -10,7 +10,7 @@ require (
 	github.com/kubernetes-csi/csi-lib-utils v0.17.0
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
 	github.com/stretchr/testify v1.8.4
-	google.golang.org/grpc v1.60.1
+	google.golang.org/grpc v1.61.0
 	k8s.io/api v0.29.0
 	k8s.io/apimachinery v0.29.0
 	k8s.io/client-go v0.29.0
@@ -61,7 +61,7 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
 	golang.org/x/net v0.18.0 // indirect
-	golang.org/x/oauth2 v0.13.0 // indirect
+	golang.org/x/oauth2 v0.14.0 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 	golang.org/x/term v0.14.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
