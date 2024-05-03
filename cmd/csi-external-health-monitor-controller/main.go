@@ -91,8 +91,9 @@ func main() {
 	logsapi.AddGoFlags(c, flag.CommandLine)
 	logs.InitLogs()
 	flag.Parse()
+	logger := klog.Background()
 	if err := logsapi.ValidateAndApply(c, fg); err != nil {
-		klog.ErrorS(err, "LoggingConfiguration is invalid")
+		logger.Error(err, "LoggingConfiguration is invalid")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
@@ -100,10 +101,10 @@ func main() {
 		fmt.Println(os.Args[0], version)
 		return
 	}
-	klog.InfoS("Version", "version", version)
+	logger.Info("Version", "version", version)
 
 	if *metricsAddress != "" && *httpEndpoint != "" {
-		klog.ErrorS(nil, "Only one of `--metrics-address` and `--http-endpoint` can be set.")
+		logger.Error(nil, "Only one of `--metrics-address` and `--http-endpoint` can be set.")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	addr := *metricsAddress
@@ -114,18 +115,18 @@ func main() {
 	// Create the client config. Use kubeconfig if given, otherwise assume in-cluster.
 	config, err := buildConfig(*kubeconfig)
 	if err != nil {
-		klog.ErrorS(err, "Failed to build a Kubernetes config")
+		logger.Error(err, "Failed to build a Kubernetes config")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	if *workerThreads == 0 {
-		klog.ErrorS(nil, "Option --worker-threads must be greater than zero")
+		logger.Error(nil, "Option --worker-threads must be greater than zero")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		klog.ErrorS(err, "Failed to create a Clientset")
+		logger.Error(err, "Failed to create a Clientset")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
@@ -137,25 +138,26 @@ func main() {
 	ctx := context.Background()
 	csiConn, err := connection.Connect(ctx, *csiAddress, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 	if err != nil {
-		klog.ErrorS(err, "Failed to connect to the CSI driver")
+		logger.Error(err, "Failed to connect to the CSI driver")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	err = rpc.ProbeForever(ctx, csiConn, *timeout)
 	if err != nil {
-		klog.ErrorS(err, "Failed to probe the CSI driver")
+		logger.Error(err, "Failed to probe the CSI driver")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	// Find driver name.
-	ctx, cancel := context.WithTimeout(ctx, csiTimeout)
+	cancelationCtx, cancel := context.WithTimeout(context.Background(), csiTimeout)
+	cancelationCtx = klog.NewContext(cancelationCtx, logger)
 	defer cancel()
-	storageDriver, err := rpc.GetDriverName(ctx, csiConn)
+	storageDriver, err := rpc.GetDriverName(cancelationCtx, csiConn)
 	if err != nil {
-		klog.ErrorS(err, "Failed to get the CSI driver name")
+		logger.Error(err, "Failed to get the CSI driver name")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
-	klog.V(2).InfoS("CSI driver name", "driver", storageDriver)
+	logger.V(2).Info("CSI driver name", "driver", storageDriver)
 	metricsManager.SetDriverName(storageDriver)
 
 	// Prepare HTTP endpoint for metrics + leader election healthz
@@ -163,45 +165,45 @@ func main() {
 	if addr != "" {
 		metricsManager.RegisterToServer(mux, *metricsPath)
 		go func() {
-			klog.InfoS("ServeMux listening", "address", addr)
+			logger.Info("ServeMux listening", "address", addr)
 			err := http.ListenAndServe(addr, mux)
 			if err != nil {
-				klog.ErrorS(err, "Failed to start HTTP server at specified address and metrics path", "address", addr, "path", *metricsPath)
+				logger.Error(err, "Failed to start HTTP server at specified address and metrics path", "address", addr, "path", *metricsPath)
 				klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 			}
 		}()
 	}
 
-	supportsService, err := supportsPluginControllerService(ctx, csiConn)
+	supportsService, err := supportsPluginControllerService(cancelationCtx, csiConn)
 	if err != nil {
-		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Plugin Controller Service")
+		logger.Error(err, "Failed to check whether the CSI driver supports the Plugin Controller Service")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if !supportsService {
-		klog.V(2).InfoS("CSI driver does not support Plugin Controller Service, exiting")
+		logger.V(2).Info("CSI driver does not support Plugin Controller Service, exiting")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	supportControllerListVolumes, err := supportControllerListVolumes(ctx, csiConn)
+	supportControllerListVolumes, err := supportControllerListVolumes(cancelationCtx, csiConn)
 	if err != nil {
-		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service ListVolumes")
+		logger.Error(err, "Failed to check whether the CSI driver supports the Controller Service ListVolumes")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	supportControllerGetVolume, err := supportControllerGetVolume(ctx, csiConn)
+	supportControllerGetVolume, err := supportControllerGetVolume(cancelationCtx, csiConn)
 	if err != nil {
-		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service GetVolume")
+		logger.Error(err, "Failed to check whether the CSI driver supports the Controller Service GetVolume")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	supportControllerVolumeCondition, err := supportControllerVolumeCondition(ctx, csiConn)
+	supportControllerVolumeCondition, err := supportControllerVolumeCondition(cancelationCtx, csiConn)
 	if err != nil {
-		klog.ErrorS(err, "Failed to check whether the CSI driver supports the Controller Service VolumeCondition")
+		logger.Error(err, "Failed to check whether the CSI driver supports the Controller Service VolumeCondition")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	if (!supportControllerListVolumes && !supportControllerGetVolume) || !supportControllerVolumeCondition {
-		klog.V(2).InfoS("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
+		logger.V(2).Info("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
@@ -219,21 +221,31 @@ func main() {
 		NodeListAndAddInterval:    *nodeListAndAddInterval,
 	}
 
-	broadcaster := record.NewBroadcaster()
+	broadcaster := record.NewBroadcaster(record.WithContext(ctx))
 	broadcaster.StartRecordingToSink(&corev1.EventSinkImpl{Interface: clientset.CoreV1().Events(v1.NamespaceAll)})
-	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-controller-%s", option.DriverName)})
+	eventRecorder := broadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: fmt.Sprintf("csi-pv-monitor-controller-%s", option.DriverName)}).WithLogger(logger)
 
-	monitorController := monitorcontroller.NewPVMonitorController(clientset, csiConn, factory.Core().V1().PersistentVolumes(),
-		factory.Core().V1().PersistentVolumeClaims(), factory.Core().V1().Pods(), factory.Core().V1().Nodes(), factory.Core().V1().Events(), eventRecorder, &option)
+	monitorController := monitorcontroller.NewPVMonitorController(
+		logger,
+		clientset,
+		csiConn,
+		factory.Core().V1().PersistentVolumes(),
+		factory.Core().V1().PersistentVolumeClaims(),
+		factory.Core().V1().Pods(),
+		factory.Core().V1().Nodes(),
+		factory.Core().V1().Events(),
+		eventRecorder,
+		&option,
+	)
 
 	run := func(ctx context.Context) {
 		stopCh := ctx.Done()
 		factory.Start(stopCh)
-		monitorController.Run(int(*workerThreads), stopCh)
+		monitorController.Run(ctx, int(*workerThreads))
 	}
 
 	if !*enableLeaderElection {
-		run(context.TODO())
+		run(ctx)
 	} else {
 		// Name of config map with leader election lock
 		lockName := "external-health-monitor-leader-" + storageDriver
@@ -249,9 +261,16 @@ func main() {
 		le.WithLeaseDuration(*leaderElectionLeaseDuration)
 		le.WithRenewDeadline(*leaderElectionRenewDeadline)
 		le.WithRetryPeriod(*leaderElectionRetryPeriod)
+		le.WithContext(ctx)
 
+		// TODO: The broadcaster and eventRecorder in the leaderelection package
+		// within csi-lib-utils do not support contextual logging.
+		// To fully support contextual logging in external-health-monitor,
+		// an upgrade of csi-lib-utils version will be necessary
+		// after contextual logging support is added to csi-lib-utils.
+		// https://github.com/kubernetes-sigs/sig-storage-lib-external-provisioner/pull/171
 		if err := le.Run(); err != nil {
-			klog.ErrorS(err, "Failed to initialize leader election")
+			logger.Error(err, "Failed to initialize leader election")
 			klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 		}
 	}

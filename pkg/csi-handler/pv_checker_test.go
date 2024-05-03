@@ -5,15 +5,15 @@ import (
 	"time"
 
 	v1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	informerV1 "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2/ktesting"
+	_ "k8s.io/klog/v2/ktesting/init"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/v5/driver"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
-	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -120,8 +120,9 @@ func TestPVHealthConditionChecker_CheckControllerListVolumeStatuses(t *testing.T
 				NextToken: "",
 			}
 
+			_, ctx := ktesting.NewTestContext(t)
 			checker.csiControllerServer.EXPECT().ListVolumes(gomock.Any(), in).Return(out, nil).Times(1)
-			if err := checker.pvHealthConditionChecker.CheckControllerListVolumeStatuses(); (err != nil) != tt.wantErr {
+			if err := checker.pvHealthConditionChecker.CheckControllerListVolumeStatuses(ctx); (err != nil) != tt.wantErr {
 				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
 			}
 
@@ -238,108 +239,10 @@ func TestPVHealthConditionChecker_CheckControllerVolumeStatus(t *testing.T) {
 				},
 			}
 
+			_, ctx := ktesting.NewTestContext(t)
 			checker.csiControllerServer.EXPECT().ControllerGetVolume(gomock.Any(), in).Return(out, nil).Times(1)
-			if err := checker.pvHealthConditionChecker.CheckControllerVolumeStatus(tt.pv); (err != nil) != tt.wantErr {
+			if err := checker.pvHealthConditionChecker.CheckControllerVolumeStatus(ctx, tt.pv); (err != nil) != tt.wantErr {
 				t.Errorf("PVHealthConditionChecker.CheckControllerVolumeStatus() error = %v, wantErr %v", err, tt.wantErr)
-			}
-
-			event, err := mock.WatchEvent(tt.wantAbnormalEvent, checker.eventStore)
-			if tt.wantAbnormalEvent {
-				assert.Nil(err)
-				assert.EqualValues(event, mock.AbnormalEvent)
-			} else {
-				assert.EqualValues(mock.ErrorWatchTimeout.Error(), err.Error())
-			}
-		})
-	}
-}
-
-func TestPVHealthConditionChecker_CheckNodeVolumeStatus(t *testing.T) {
-	assert := assert.New(t)
-	tests := []struct {
-		name                string
-		pv                  *v1.PersistentVolume
-		pvc                 *v1.PersistentVolumeClaim
-		pod                 *v1.Pod
-		wantErr             bool
-		wantAbnormalEvent   bool
-		kubeletRootPath     string
-		volumeId            string
-		supportStageUnstage bool
-	}{
-		{
-			name: "VolumeConditionNormal Case",
-			pvc:  mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:   mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "2", "uid", &mock.FSVolumeMode, v1.VolumeBound),
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					UID: "1",
-				},
-			},
-			volumeId: "2",
-		},
-		{
-			name:    "PV without CSI driver Case",
-			pvc:     mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:      mock.CreatePVWithoutCSIDriver(2, "pvc", "pv", mock.DefaultNS, "1", "uid", v1.VolumeBound, &mock.FSVolumeMode),
-			wantErr: true,
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					UID: "1",
-				},
-			},
-			volumeId: "1",
-		},
-		{
-			name:    "PV isn't in VolumeBound state",
-			pvc:     mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:      mock.CreatePV(2, "pvc", "pv", mock.DefaultNS, "1", "uid", &mock.FSVolumeMode, v1.VolumePending),
-			wantErr: true,
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					UID: "1",
-				},
-			},
-			volumeId: "1",
-		},
-		{
-			name:    "PV with nil VolumeHandle",
-			pvc:     mock.CreatePVC(1, 2, "pvc", "uid", mock.DefaultNS, "pv", v1.ClaimBound),
-			pv:      mock.CreatePVWithNilVolumeHandle(2, "pvc", "pv", mock.DefaultNS, "1", "uid", v1.VolumePending, &mock.FSVolumeMode),
-			wantErr: true,
-			pod: &v1.Pod{
-				ObjectMeta: metav1.ObjectMeta{
-					UID: "1",
-				},
-			},
-			volumeId: "1",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			checker := createMockPVHealthConditionChecker(t)
-			if err := checker.pvInformer.Informer().GetStore().Add(tt.pv); err != nil {
-				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
-			}
-
-			if err := checker.pvcInformer.Informer().GetStore().Add(tt.pvc); err != nil {
-				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
-			}
-			isBlock := *tt.pv.Spec.VolumeMode == v1.PersistentVolumeBlock
-			volumePath := util.GetVolumePath(tt.kubeletRootPath, tt.pv.Name, string(tt.pod.ObjectMeta.UID), isBlock)
-
-			in := &csi.NodeGetVolumeStatsRequest{
-				VolumeId:          tt.volumeId,
-				VolumePath:        volumePath,
-				StagingTargetPath: "",
-			}
-			out := &csi.NodeGetVolumeStatsResponse{
-				VolumeCondition: volumeMap[tt.volumeId].Condition,
-			}
-			checker.csiNodeServer.EXPECT().NodeGetVolumeStats(gomock.Any(), in).Return(out, nil).Times(1)
-
-			if err := checker.pvHealthConditionChecker.CheckNodeVolumeStatus(tt.kubeletRootPath, tt.supportStageUnstage, tt.pv, tt.pod); (err != nil) != tt.wantErr {
-				t.Errorf("PVHealthConditionChecker.CheckNodeVolumeStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			event, err := mock.WatchEvent(tt.wantAbnormalEvent, checker.eventStore)
