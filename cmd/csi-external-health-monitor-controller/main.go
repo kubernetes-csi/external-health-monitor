@@ -134,20 +134,21 @@ func main() {
 	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
 
 	// Connect to CSI.
-	csiConn, err := connection.Connect(*csiAddress, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
+	ctx := context.Background()
+	csiConn, err := connection.Connect(ctx, *csiAddress, metricsManager, connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 	if err != nil {
 		klog.ErrorS(err, "Failed to connect to the CSI driver")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
-	err = rpc.ProbeForever(csiConn, *timeout)
+	err = rpc.ProbeForever(ctx, csiConn, *timeout)
 	if err != nil {
 		klog.ErrorS(err, "Failed to probe the CSI driver")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
 	// Find driver name.
-	ctx, cancel := context.WithTimeout(context.Background(), csiTimeout)
+	ctx, cancel := context.WithTimeout(ctx, csiTimeout)
 	defer cancel()
 	storageDriver, err := rpc.GetDriverName(ctx, csiConn)
 	if err != nil {
