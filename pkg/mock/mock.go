@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"errors"
 	"io/ioutil"
 	"path/filepath"
@@ -69,9 +70,9 @@ func QuantityGB(i int) resource.Quantity {
 	return *q
 }
 
-func New(address string) (*grpc.ClientConn, error) {
+func New(ctx context.Context, address string) (*grpc.ClientConn, error) {
 	metricsManager := metrics.NewCSIMetricsManager("fake.csi.driver.io" /* driverName */)
-	conn, err := connection.Connect(address, metricsManager)
+	conn, err := connection.Connect(ctx, address, metricsManager)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +101,7 @@ func createMockServer(t *testing.T, tmpdir string) (*gomock.Controller,
 
 	// Create a client connection to it
 	addr := drv.Address()
-	csiConn, err := New(addr)
+	csiConn, err := New(context.Background(), addr)
 	assert.Nil(t, err)
 
 	return mockController, drv, identityServer, controllerServer, nodeServer, csiConn, nil
