@@ -52,8 +52,16 @@ type PVHealthConditionChecker struct {
 }
 
 // NewPVHealthConditionChecker returns an instance of PVHealthConditionChecker
-func NewPVHealthConditionChecker(name string, conn *grpc.ClientConn, kClient kubernetes.Interface, timeout time.Duration,
-	pvcLister corelisters.PersistentVolumeClaimLister, pvLister corelisters.PersistentVolumeLister, eventInformer coreinformers.EventInformer, recorder record.EventRecorder) *PVHealthConditionChecker {
+func NewPVHealthConditionChecker(
+	name string,
+	conn *grpc.ClientConn,
+	kClient kubernetes.Interface,
+	timeout time.Duration,
+	pvcLister corelisters.PersistentVolumeClaimLister,
+	pvLister corelisters.PersistentVolumeLister,
+	eventInformer coreinformers.EventInformer,
+	recorder record.EventRecorder,
+) *PVHealthConditionChecker {
 	return &PVHealthConditionChecker{
 		driverName:    name,
 		csiConn:       conn,
@@ -63,14 +71,13 @@ func NewPVHealthConditionChecker(name string, conn *grpc.ClientConn, kClient kub
 		pvLister:      pvLister,
 		timeout:       timeout,
 		eventInformer: eventInformer,
-
-		csiPVHandler: NewCSIPVHandler(conn),
+		csiPVHandler:  NewCSIPVHandler(conn),
 	}
 }
 
 // CheckControllerListVolumeStatuses checks volumes health condition by ListVolumes
-func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() error {
-	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
+func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, checker.timeout)
 	defer cancel()
 
 	result, err := checker.csiPVHandler.ControllerListVolumeConditions(ctx)
@@ -83,20 +90,21 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 		return err
 	}
 
+	logger := klog.FromContext(ctx)
 	for _, pv := range pvs {
 		if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != checker.driverName {
-			klog.InfoS("CSI source is nil or the volume is not managed by this checker/monitor")
+			logger.Info("CSI source is nil or the volume is not managed by this checker/monitor")
 			continue
 		}
 
 		if pv.Status.Phase != v1.VolumeBound {
-			klog.InfoS("PV status is not bound", "pv", pv.Name)
+			logger.Info("PV status is not bound", "pv", pv.Name)
 			continue
 		}
 
 		volumeHandle, err := checker.GetVolumeHandle(pv)
 		if err != nil {
-			klog.ErrorS(err, "Get volume handle error")
+			logger.Error(err, "Get volume handle error")
 			continue
 		}
 
@@ -107,7 +115,7 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 
 		pvc, err := checker.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.ErrorS(err, "Get PVC error")
+			logger.Error(err, "Get PVC error")
 			continue
 		}
 
@@ -116,7 +124,7 @@ func (checker *PVHealthConditionChecker) CheckControllerListVolumeStatuses() err
 			checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
 		} else {
 			// Send recovery event if the abnormal event was sent and unexpired
-			checker.sendRecoveryEventToPVC(pvc, volumeCondition)
+			checker.sendRecoveryEventToPVC(logger, pvc)
 		}
 	}
 
@@ -133,7 +141,7 @@ func (checker *PVHealthConditionChecker) GetVolumeHandle(pv *v1.PersistentVolume
 }
 
 // CheckControllerVolumeStatus checks volume status in controller side
-func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.PersistentVolume) error {
+func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(ctx context.Context, pv *v1.PersistentVolume) error {
 	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != checker.driverName {
 		return fmt.Errorf("csi source is nil or the volume is not managed by this checker/monitor")
 	}
@@ -142,12 +150,13 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 		return fmt.Errorf("PV: %s status is not bound", pv.Name)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
+	ctx, cancel := context.WithTimeout(ctx, checker.timeout)
 	defer cancel()
 
+	logger := klog.FromContext(ctx)
 	volumeHandle, err := checker.GetVolumeHandle(pv)
 	if err != nil {
-		klog.ErrorS(err, "Get volume handle error")
+		logger.Error(err, "Get volume handle error")
 		return err
 	}
 
@@ -171,56 +180,7 @@ func (checker *PVHealthConditionChecker) CheckControllerVolumeStatus(pv *v1.Pers
 		checker.eventRecorder.Event(pvc, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
 	} else {
 		// Send recovery event if the abnormal event was sent and unexpired
-		checker.sendRecoveryEventToPVC(pvc, volumeCondition)
-	}
-
-	return nil
-}
-
-// CheckNodeVolumeStatus checks volume status in node side
-func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath string, supportStageUnstage bool, pv *v1.PersistentVolume, pod *v1.Pod) error {
-	if pv.Spec.CSI == nil || pv.Spec.CSI.Driver != checker.driverName {
-		return fmt.Errorf("csi source is nil or the volume is not managed by this checker/monitor")
-	}
-
-	if pv.Status.Phase != v1.VolumeBound {
-		return fmt.Errorf("PV: %s status is not bound", pv.Name)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), checker.timeout)
-	defer cancel()
-
-	volumeHandle, err := checker.GetVolumeHandle(pv)
-	if err != nil {
-		klog.ErrorS(err, "Get volume handle error")
-		return err
-	}
-
-	if len(volumeHandle) == 0 {
-		return fmt.Errorf("volume handle in csi source is empty")
-	}
-
-	var volumePath, stagingTargetPath string
-
-	isBlock := *pv.Spec.VolumeMode == v1.PersistentVolumeBlock
-	volumePath = util.GetVolumePath(kubeletRootPath, pv.Name, string(pod.UID), isBlock)
-
-	if supportStageUnstage {
-		stagingTargetPath, err = util.MakeDeviceMountPath(kubeletRootPath, pv)
-		if err != nil {
-			return err
-		}
-	}
-
-	volumeCondition, err := checker.csiPVHandler.NodeGetVolumeCondition(ctx, volumeHandle, volumePath, stagingTargetPath)
-	if err != nil {
-		return err
-	}
-
-	if volumeCondition.GetAbnormal() {
-		checker.eventRecorder.Event(pod, v1.EventTypeWarning, "VolumeConditionAbnormal", volumeCondition.GetMessage())
-	} else {
-		return checker.sendRecoveryEventToPod(pod, volumeCondition)
+		checker.sendRecoveryEventToPVC(logger, pvc)
 	}
 
 	return nil
@@ -229,34 +189,15 @@ func (checker *PVHealthConditionChecker) CheckNodeVolumeStatus(kubeletRootPath s
 // sendRecoveryEventToPVC sends the recovery event to the pvc
 // If the volume condition is normal and abnormal event wasn't expired,
 // PVHealthConditionChecker should send recovery event.
-func (checker *PVHealthConditionChecker) sendRecoveryEventToPVC(pvc *v1.PersistentVolumeClaim, volumeCondition *VolumeConditionResult) {
+func (checker *PVHealthConditionChecker) sendRecoveryEventToPVC(logger klog.Logger, pvc *v1.PersistentVolumeClaim) {
 	pvcUID := string(pvc.ObjectMeta.GetUID())
 	key := fmt.Sprintf("%s:%s:%s", pvcUID, v1.EventTypeWarning, "VolumeConditionAbnormal")
 	events, err := checker.eventInformer.Informer().GetIndexer().ByIndex(util.DefaultEventIndexerName, key)
 	if err != nil {
-		klog.InfoS("Get abnormal event from indexer failed", "err", err)
+		logger.Info("Get abnormal event from indexer failed", "err", err)
 	}
 
 	if len(events) > 0 {
 		checker.eventRecorder.Event(pvc, v1.EventTypeNormal, "VolumeConditionNormal", util.DefaultRecoveryEventMessage)
 	}
-}
-
-// sendRecoveryEventToPod sends the recovery event to the pod
-// If the volume condition is normal and abnormal event wasn't expired,
-// PVHealthConditionChecker should send recovery event.
-func (checker *PVHealthConditionChecker) sendRecoveryEventToPod(pod *v1.Pod, volumeCondition *VolumeConditionResult) error {
-	podUID := string(pod.ObjectMeta.GetUID())
-	key := fmt.Sprintf("%s:%s:%s", podUID, v1.EventTypeWarning, "VolumeConditionAbnormal")
-	events, err := checker.eventInformer.Informer().GetIndexer().ByIndex(util.DefaultEventIndexerName, key)
-	if err != nil {
-		klog.InfoS("Get abnormal event from indexer failed", "err", err)
-		return nil
-	}
-
-	if len(events) > 0 {
-		checker.eventRecorder.Event(pod, v1.EventTypeNormal, "VolumeConditionNormal", util.DefaultRecoveryEventMessage)
-	}
-
-	return nil
 }

@@ -9,6 +9,8 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2/ktesting"
+	_ "k8s.io/klog/v2/ktesting/init"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -90,8 +92,9 @@ func runTest(t *testing.T, tc *testCase) {
 		assert.Nil(err)
 	}
 
+	logger, ctx := ktesting.NewTestContext(t)
 	mockCSIcontrollerServer(controllerServer, tc.supportListVolumes, volumes)
-	pvMonitorController := NewPVMonitorController(client, csiConn, pvInformer, pvcInformer, podInformer, nodeInformer, eventInformer, &eventRecorder, option)
+	pvMonitorController := NewPVMonitorController(logger, client, csiConn, pvInformer, pvcInformer, podInformer, nodeInformer, eventInformer, &eventRecorder, option)
 	assert.NotNil(pvMonitorController)
 
 	if tc.hasRecoveryEvent {
@@ -99,10 +102,10 @@ func runTest(t *testing.T, tc *testCase) {
 		assert.Nil(err)
 	}
 
-	ctx, cancel := context.WithCancel(context.TODO())
+	ctx, cancel := context.WithCancel(ctx)
 	stopCh := ctx.Done()
 	informers.Start(stopCh)
-	go pvMonitorController.Run(1, stopCh)
+	go pvMonitorController.Run(ctx, 1)
 
 	event, err := mock.WatchEvent(tc.wantAbnormalEvent, eventStore)
 	if tc.wantAbnormalEvent {

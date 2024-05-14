@@ -14,7 +14,10 @@
 
 .PHONY: all csi-external-health-monitor-controller clean test
 
-CMDS=csi-external-health-monitor-controller 
+CMDS=csi-external-health-monitor-controller
 all: build
 
 include release-tools/build.make
+
+# Check contextual logging.
+test: test-logcheck

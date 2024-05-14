@@ -17,6 +17,7 @@ limitations under the License.
 package pv_monitor_controller
 
 import (
+	"context"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
@@ -70,9 +71,18 @@ type NodeWatcher struct {
 }
 
 // NewNodeWatcher creates a node watcher object that will watch the nodes
-func NewNodeWatcher(driverName string, client kubernetes.Interface, volumeLister corelisters.PersistentVolumeLister,
-	pvcLister corelisters.PersistentVolumeClaimLister, nodeInformer coreinformers.NodeInformer,
-	recorder record.EventRecorder, pvcToPodsCache *util.PVCToPodsCache, nodeWorkerExecuteInterval time.Duration, nodeListAndAddInterval time.Duration) *NodeWatcher {
+func NewNodeWatcher(
+	logger klog.Logger,
+	driverName string,
+	client kubernetes.Interface,
+	volumeLister corelisters.PersistentVolumeLister,
+	pvcLister corelisters.PersistentVolumeClaimLister,
+	nodeInformer coreinformers.NodeInformer,
+	recorder record.EventRecorder,
+	pvcToPodsCache *util.PVCToPodsCache,
+	nodeWorkerExecuteInterval time.Duration,
+	nodeListAndAddInterval time.Duration,
+) *NodeWatcher {
 
 	watcher := &NodeWatcher{
 		driverName:                driverName,
@@ -90,12 +100,12 @@ func NewNodeWatcher(driverName string, client kubernetes.Interface, volumeLister
 
 	nodeInformer.Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) { watcher.enqueueWork(obj) },
+			AddFunc: func(obj interface{}) { watcher.enqueueWork(logger, obj) },
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				watcher.enqueueWork(newObj)
+				watcher.enqueueWork(logger, newObj)
 			},
 			DeleteFunc: func(obj interface{}) {
-				watcher.enqueueWork(obj)
+				watcher.enqueueWork(logger, obj)
 			},
 		},
 	)
@@ -106,49 +116,52 @@ func NewNodeWatcher(driverName string, client kubernetes.Interface, volumeLister
 }
 
 // enqueueWork adds node to given work queue.
-func (watcher *NodeWatcher) enqueueWork(obj interface{}) {
+func (watcher *NodeWatcher) enqueueWork(logger klog.Logger, obj interface{}) {
 	// Beware of "xxx deleted" events
 	if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
 		obj = unknown.Obj
 	}
 	objName, err := cache.DeletionHandlingMetaNamespaceKeyFunc(obj)
 	if err != nil {
-		klog.ErrorS(err, "Failed to get key from object")
+		logger.Error(err, "Failed to get key from object")
 		return
 	}
-	klog.V(6).InfoS("Enqueued ObjectName for sync", "objectName", objName)
+	logger.V(6).Info("Enqueued ObjectName for sync", "objectName", objName)
 	watcher.nodeQueue.Add(objName)
 }
 
 // addNodesToQueue adds all existing nodes to queue periodically
-func (watcher *NodeWatcher) addNodesToQueue() {
-	klog.V(4).InfoS("Resyncing Node watcher")
+func (watcher *NodeWatcher) addNodesToQueue(ctx context.Context) {
+	logger := klog.FromContext(ctx)
+	logger.V(4).Info("Resyncing Node watcher")
 
 	nodes, err := watcher.nodeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.InfoS("Cannot list nodes", "err", err)
+		logger.Info("Cannot list nodes", "err", err)
 		return
 	}
 	for _, node := range nodes {
-		watcher.enqueueWork(node)
+		watcher.enqueueWork(logger, node)
 	}
 }
 
 // Run starts all of this controller's control loops
-func (watcher *NodeWatcher) Run(stopCh <-chan struct{}) {
+func (watcher *NodeWatcher) Run(ctx context.Context) {
+	logger := klog.FromContext(ctx)
 	defer watcher.nodeQueue.ShutDown()
-	if !cache.WaitForCacheSync(stopCh, watcher.nodeListerSynced) {
-		klog.ErrorS(nil, "Cannot sync cache")
+	if !cache.WaitForCacheSync(ctx.Done(), watcher.nodeListerSynced) {
+		logger.Error(nil, "Cannot sync cache")
 		return
 	}
 
-	go wait.Until(watcher.addNodesToQueue, watcher.nodeListAndAddInterval, stopCh)
-	go wait.Until(watcher.WatchNodes, watcher.nodeWorkerExecuteInterval, stopCh)
-	<-stopCh
+	go wait.UntilWithContext(ctx, watcher.addNodesToQueue, watcher.nodeListAndAddInterval)
+	go wait.UntilWithContext(ctx, watcher.WatchNodes, watcher.nodeWorkerExecuteInterval)
+	<-ctx.Done()
 }
 
 // WatchNodes periodically checks if nodes break down
-func (watcher *NodeWatcher) WatchNodes() {
+func (watcher *NodeWatcher) WatchNodes(ctx context.Context) {
+	logger := klog.FromContext(ctx)
 	workFunc := func() bool {
 		keyObj, quit := watcher.nodeQueue.Get()
 		if quit {
@@ -156,39 +169,38 @@ func (watcher *NodeWatcher) WatchNodes() {
 		}
 		defer watcher.nodeQueue.Done(keyObj)
 		key := keyObj.(string)
-		klog.V(4).InfoS("WatchNode", "node", key)
+		logger.V(4).Info("WatchNode", "node", key)
 
 		_, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
-			klog.ErrorS(err, "Error getting name of node from informer", "node", key)
+			logger.Error(err, "Error getting name of node from informer", "node", key)
 			return false
 		}
 		node, err := watcher.nodeLister.Get(name)
 		if err == nil {
 			// The node still exists in informer cache, the event must have
 			// been add/update/sync
-			watcher.updateNode(key, node)
+			watcher.updateNode(logger, node)
 			return false
 		}
 		if !errors.IsNotFound(err) {
-			klog.V(2).InfoS("Error getting node from informer", "node", key, "err", err)
+			logger.V(2).Info("Error getting node from informer", "node", key, "err", err)
 			return false
 		}
 
-		// The node is not in informer cache, the event must be
-		// "delete"
-		watcher.deleteNode(key, node)
+		// The node is not in informer cache, the event must be "delete"
+		watcher.deleteNode(logger, node)
 		return false
 	}
 	for {
 		if quit := workFunc(); quit {
-			klog.InfoS("Volume worker queue shutting down")
+			logger.Info("Volume worker queue shutting down")
 			return
 		}
 	}
 }
 
-func (watcher *NodeWatcher) updateNode(key string, node *v1.Node) {
+func (watcher *NodeWatcher) updateNode(logger klog.Logger, node *v1.Node) {
 	// TODO: if node is ready, check if node was ever marked down, if yes, reset it
 	if watcher.isNodeReady(node) {
 		// The node status is ok, but if it was marked before, remove the mark
@@ -200,25 +212,25 @@ func (watcher *NodeWatcher) updateNode(key string, node *v1.Node) {
 		// if the node was ever marked down, reset PVCs status on it
 		if watcher.nodeEverMarkedDown[node.Name] {
 			// TODO: reset PVCs status on the node
-			err := watcher.cleanNodeFailureConditionForPVC(node)
+			err := watcher.cleanNodeFailureConditionForPVC(logger, node)
 			if err == nil {
 				// when node recovers and send recovery event successfully, remove the node from the map
 				delete(watcher.nodeEverMarkedDown, node.Name)
 			} else {
-				klog.ErrorS(err, "Clean node failure message error")
+				logger.Error(err, "Clean node failure message error")
 			}
 		}
 		return
 	}
 
-	if watcher.isNodeBroken(node) {
-		klog.InfoS("Node is broken", "node", node.Name)
+	if watcher.isNodeBroken(logger, node) {
+		logger.Info("Node is broken", "node", node.Name)
 		// mark all PVCs/Pods on this node
-		err := watcher.markPVCsAndPodsOnUnhealthyNode(node)
+		err := watcher.markPVCsAndPodsOnUnhealthyNode(logger, node)
 		if err != nil {
-			klog.ErrorS(err, "Mark PVCs on not ready node failed, re-enqueue")
+			logger.Error(err, "Mark PVCs on not ready node failed, re-enqueue")
 			// if error happened, re-enqueue
-			watcher.enqueueWork(node)
+			watcher.enqueueWork(logger, node)
 			return
 		}
 
@@ -243,7 +255,7 @@ func (watcher *NodeWatcher) isNodeReady(node *v1.Node) bool {
 	return false
 }
 
-func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
+func (watcher *NodeWatcher) isNodeBroken(logger klog.Logger, node *v1.Node) bool {
 	if node.Status.Phase == v1.NodeTerminated {
 		return true
 	}
@@ -257,7 +269,7 @@ func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
 				if timeInterval.Seconds() > DefaultNodeNotReadyTimeDuration.Seconds() {
 					return true
 				}
-				klog.V(6).InfoS("Node is not ready, but less than 5 minutes", "node", node.Name)
+				logger.V(6).Info("Node is not ready, but less than 5 minutes", "node", node.Name)
 				return false
 			}
 
@@ -270,22 +282,22 @@ func (watcher *NodeWatcher) isNodeBroken(node *v1.Node) bool {
 	return false
 }
 
-func (watcher *NodeWatcher) deleteNode(key string, node *v1.Node) {
-	klog.InfoS("Node is deleted, so mark the PVs on the node", "node", node.Name)
+func (watcher *NodeWatcher) deleteNode(logger klog.Logger, node *v1.Node) {
+	logger.Info("Node is deleted, so mark the PVs on the node", "node", node.Name)
 
 	// mark all PVs on this node
-	err := watcher.markPVCsAndPodsOnUnhealthyNode(node)
+	err := watcher.markPVCsAndPodsOnUnhealthyNode(logger, node)
 	if err != nil {
-		klog.ErrorS(err, "Marking PVs failed")
+		logger.Error(err, "Marking PVs failed")
 		// must re-enqueue here, because we can not get this from informer(node-lister) any more
-		watcher.enqueueWork(node)
+		watcher.enqueueWork(logger, node)
 	}
 }
 
-func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error {
+func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(logger klog.Logger, node *v1.Node) error {
 	pvs, err := watcher.volumeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.InfoS("Cannot list pvs", "err", err)
+		logger.Info("Cannot list pvs", "err", err)
 		return err
 	}
 
@@ -299,7 +311,7 @@ func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error
 		}
 
 		pods := watcher.pvcToPodsCache.GetPodsByPVC(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		if pods == nil || len(pods) == 0 {
+		if len(pods) == 0 {
 			continue
 		}
 
@@ -316,7 +328,7 @@ func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error
 		// TODO: add events to Pods instead
 		pvc, err := watcher.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.ErrorS(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
+			logger.Error(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
 			return err
 		}
 
@@ -328,10 +340,10 @@ func (watcher *NodeWatcher) cleanNodeFailureConditionForPVC(node *v1.Node) error
 	return nil
 }
 
-func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(node *v1.Node) error {
+func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(logger klog.Logger, node *v1.Node) error {
 	pvs, err := watcher.volumeLister.List(labels.NewSelector())
 	if err != nil {
-		klog.InfoS("Cannot list pvs", "err", err)
+		logger.Info("Cannot list pvs", "err", err)
 		return err
 	}
 
@@ -345,7 +357,7 @@ func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(node *v1.Node) error 
 		}
 
 		pods := watcher.pvcToPodsCache.GetPodsByPVC(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name)
-		if pods == nil || len(pods) == 0 {
+		if len(pods) == 0 {
 			continue
 		}
 
@@ -361,7 +373,7 @@ func (watcher *NodeWatcher) markPVCsAndPodsOnUnhealthyNode(node *v1.Node) error 
 
 		pvc, err := watcher.pvcLister.PersistentVolumeClaims(pv.Spec.ClaimRef.Namespace).Get(pv.Spec.ClaimRef.Name)
 		if err != nil {
-			klog.ErrorS(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
+			logger.Error(err, "Get PVC from PVC lister error", "pvc", klog.KRef(pv.Spec.ClaimRef.Namespace, pv.Spec.ClaimRef.Name))
 			return err
 		}
 

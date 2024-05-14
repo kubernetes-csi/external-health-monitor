@@ -43,6 +43,6 @@ func TestMakeDeviceMountPath(t *testing.T) {
 	expectedMountPath := "/var/lib/kubelet/plugins/kubernetes.io/csi/pv/pvc-431ceccf-7999-11ea-ab4a-fa163ffd8213/globalmount"
 	pv := &v1.PersistentVolume{}
 	pv.Name = "pvc-431ceccf-7999-11ea-ab4a-fa163ffd8213"
-	actualMountPath, err := MakeDeviceMountPath(kubeletRootDir, pv)
+	actualMountPath, _ := MakeDeviceMountPath(kubeletRootDir, pv)
 	assert.Equal(expectedMountPath, actualMountPath)
 }

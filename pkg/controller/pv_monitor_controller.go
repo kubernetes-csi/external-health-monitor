@@ -17,6 +17,7 @@ limitations under the License.
 package pv_monitor_controller
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -95,8 +96,18 @@ type PVMonitorOptions struct {
 }
 
 // NewPVMonitorController creates PV monitor controller
-func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer, podInformer coreinformers.PodInformer, nodeInformer coreinformers.NodeInformer, eventInformer coreinformers.EventInformer, eventRecorder record.EventRecorder, option *PVMonitorOptions) *PVMonitorController {
+func NewPVMonitorController(
+	logger klog.Logger,
+	client kubernetes.Interface,
+	conn *grpc.ClientConn,
+	pvInformer coreinformers.PersistentVolumeInformer,
+	pvcInformer coreinformers.PersistentVolumeClaimInformer,
+	podInformer coreinformers.PodInformer,
+	nodeInformer coreinformers.NodeInformer,
+	eventInformer coreinformers.EventInformer,
+	eventRecorder record.EventRecorder,
+	option *PVMonitorOptions,
+) *PVMonitorController {
 
 	ctrl := &PVMonitorController{
 		csiConn:            conn,
@@ -150,54 +161,77 @@ func NewPVMonitorController(client kubernetes.Interface, conn *grpc.ClientConn, 
 	})
 
 	if ctrl.enableNodeWatcher {
-		ctrl.nodeWatcher = NewNodeWatcher(ctrl.driverName, ctrl.client, ctrl.pvLister, ctrl.pvcLister, nodeInformer, ctrl.eventRecorder, ctrl.pvcToPodsCache, option.NodeWorkerExecuteInterval, option.NodeListAndAddInterval)
+		ctrl.nodeWatcher = NewNodeWatcher(
+			logger,
+			ctrl.driverName,
+			ctrl.client,
+			ctrl.pvLister,
+			ctrl.pvcLister,
+			nodeInformer,
+			ctrl.eventRecorder,
+			ctrl.pvcToPodsCache,
+			option.NodeWorkerExecuteInterval,
+			option.NodeListAndAddInterval,
+		)
 	}
 
-	ctrl.pvChecker = handler.NewPVHealthConditionChecker(option.DriverName, conn, client, option.ContextTimeout, ctrl.pvcLister, ctrl.pvLister, eventInformer, ctrl.eventRecorder)
+	ctrl.pvChecker = handler.NewPVHealthConditionChecker(
+		option.DriverName,
+		conn,
+		client,
+		option.ContextTimeout,
+		ctrl.pvcLister,
+		ctrl.pvLister,
+		eventInformer,
+		ctrl.eventRecorder,
+	)
 
 	return ctrl
 }
 
 // Run runs the volume health condition checking method
-func (ctrl *PVMonitorController) Run(workers int, stopCh <-chan struct{}) {
+func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	defer ctrl.pvQueue.ShutDown()
 
-	klog.InfoS("Starting CSI External PV Health Monitor Controller")
-	defer klog.InfoS("Shutting down CSI External PV Health Monitor Controller")
+	logger := klog.FromContext(ctx)
+	logger.Info("Starting CSI External PV Health Monitor Controller")
+	defer logger.Info("Shutting down CSI External PV Health Monitor Controller")
 
-	if !cache.WaitForCacheSync(stopCh, ctrl.pvcListerSynced, ctrl.pvListerSynced, ctrl.podListerSynced) {
-		klog.ErrorS(nil, "Cannot sync cache")
+	if !cache.WaitForCacheSync(ctx.Done(), ctrl.pvcListerSynced, ctrl.pvListerSynced, ctrl.podListerSynced) {
+		logger.Error(nil, "Cannot sync cache")
 		return
 	}
 
 	if ctrl.enableNodeWatcher {
-		go ctrl.nodeWatcher.Run(stopCh)
+		go ctrl.nodeWatcher.Run(ctx)
 	}
 
 	// TODO: we need to cache the PVs info and get the diff so that we can identify the NotFound error
 	// if storage support List Volumes RPC, ListVolumes is preferred for performance reasons
 	if ctrl.supportListVolumes {
-		go wait.Until(ctrl.checkPVsHealthConditionByListVolumes, ctrl.ListVolumesInterval, stopCh)
+		go wait.UntilWithContext(ctx, ctrl.checkPVsHealthConditionByListVolumes, ctrl.ListVolumesInterval)
 	} else {
 		for i := 0; i < workers; i++ {
-			go wait.Until(ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval, stopCh)
+			go wait.UntilWithContext(ctx, ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval)
 		}
 
-		go wait.Until(func() {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
+			logger := klog.FromContext(ctx)
 			err := ctrl.AddPVsToQueue()
 			if err != nil {
-				klog.ErrorS(err, "Failed to reconcile volumes")
+				logger.Error(err, "Failed to reconcile volumes")
 			}
-		}, ctrl.VolumeListAndAddInterval, stopCh)
+		}, ctrl.VolumeListAndAddInterval)
 	}
 
-	<-stopCh
+	<-ctx.Done()
 }
 
-func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes() {
-	err := ctrl.pvChecker.CheckControllerListVolumeStatuses()
+func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes(ctx context.Context) {
+	logger := klog.FromContext(ctx)
+	err := ctrl.pvChecker.CheckControllerListVolumeStatuses(ctx)
 	if err != nil {
-		klog.ErrorS(err, "Check controller volume status error")
+		logger.Error(err, "Check controller volume status error")
 	}
 }
 
@@ -225,15 +259,16 @@ func (ctrl *PVMonitorController) AddPVsToQueue() error {
 	return nil
 }
 
-func (ctrl *PVMonitorController) checkPVWorker() {
+func (ctrl *PVMonitorController) checkPVWorker(ctx context.Context) {
 	key, quit := ctrl.pvQueue.Get()
 	if quit {
 		return
 	}
 	defer ctrl.pvQueue.Done(key)
 
+	logger := klog.FromContext(ctx)
 	pvName := key.(string)
-	klog.V(4).InfoS("Started PV processing", "pv", pvName)
+	logger.V(4).Info("Started PV processing", "pv", pvName)
 
 	// get PV to process
 	pv, err := ctrl.pvLister.Get(pvName)
@@ -244,27 +279,27 @@ func (ctrl *PVMonitorController) checkPVWorker() {
 			// delete pv from cache here so that we do not need to handle pv deletion events
 			delete(ctrl.pvEnqueued, pvName)
 			ctrl.Unlock()
-			klog.V(3).InfoS("PV deleted, ignoring", "pv", pvName)
+			logger.V(3).Info("PV deleted, ignoring", "pv", pvName)
 			return
 		}
-		klog.ErrorS(err, "Error getting PersistentVolume", "pv", pvName)
+		logger.Error(err, "Error getting PersistentVolume", "pv", pvName)
 		ctrl.pvQueue.Add(pvName)
 		return
 	}
 
 	if pv.DeletionTimestamp != nil {
-		klog.InfoS("PV is being deleted now, skip checking health condition", "pv", pv.Name)
+		logger.Info("PV is being deleted now, skip checking health condition", "pv", pv.Name)
 		return
 	}
 
 	if pv.Status.Phase != v1.VolumeBound {
-		klog.InfoS("PV status is not bound, remove it from the queue", "pv", pv.Name)
+		logger.Info("PV status is not bound, remove it from the queue", "pv", pv.Name)
 		return
 	}
 
-	err = ctrl.pvChecker.CheckControllerVolumeStatus(pv)
+	err = ctrl.pvChecker.CheckControllerVolumeStatus(ctx, pv)
 	if err != nil {
-		klog.ErrorS(err, "Check controller volume status error")
+		logger.Error(err, "Check controller volume status error")
 	}
 
 	// re-enqueue anyway

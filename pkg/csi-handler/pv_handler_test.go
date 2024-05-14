@@ -8,7 +8,6 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
-	"google.golang.org/grpc"
 )
 
 // Test Data
@@ -46,10 +45,6 @@ var (
 type VolumeSample struct {
 	Volume    *csi.Volume
 	Condition *csi.VolumeCondition
-}
-
-type csiConnection struct {
-	conn *grpc.ClientConn
 }
 
 func Test_csiPVHandler_ControllerListVolumeConditions(t *testing.T) {
