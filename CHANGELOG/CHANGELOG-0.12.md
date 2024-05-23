@@ -8,6 +8,7 @@
 
 ### Feature
 
+- Added support for contextual logging. ([#246](https://github.com/kubernetes-csi/external-health-monitor/pull/246), [@bells17](https://github.com/bells17))
 - Updated Kubernetes deps to v1.30 ([#250](https://github.com/kubernetes-csi/external-health-monitor/pull/250), [@jsafrane](https://github.com/jsafrane))
 
 ## Dependencies
@@ -19,10 +20,10 @@
 
 ### Changed
 - cloud.google.com/go/compute/metadata: v0.2.3 → v0.3.0
-- cloud.google.com/go/compute: v1.23.0 → v1.24.0
+- cloud.google.com/go/compute: v1.23.0 → v1.25.1
 - github.com/alecthomas/kingpin/v2: [v2.3.2 → v2.4.0](https://github.com/alecthomas/kingpin/v2/compare/v2.3.2...v2.4.0)
 - github.com/cespare/xxhash/v2: [v2.2.0 → v2.3.0](https://github.com/cespare/xxhash/v2/compare/v2.2.0...v2.3.0)
-- github.com/cncf/xds/go: [e9ce688 → 0fa0005](https://github.com/cncf/xds/go/compare/e9ce688...0fa0005)
+- github.com/cncf/xds/go: [e9ce688 → 8a4994d](https://github.com/cncf/xds/go/compare/e9ce688...8a4994d)
 - github.com/cpuguy83/go-md2man/v2: [v2.0.2 → v2.0.3](https://github.com/cpuguy83/go-md2man/v2/compare/v2.0.2...v2.0.3)
 - github.com/emicklei/go-restful/v3: [v3.11.0 → v3.12.0](https://github.com/emicklei/go-restful/v3/compare/v3.11.0...v3.12.0)
 - github.com/envoyproxy/go-control-plane: [v0.11.1 → v0.12.0](https://github.com/envoyproxy/go-control-plane/compare/v0.11.1...v0.12.0)
@@ -42,7 +43,7 @@
 - github.com/prometheus/client_golang: [v1.16.0 → v1.19.1](https://github.com/prometheus/client_golang/compare/v1.16.0...v1.19.1)
 - github.com/prometheus/client_model: [v0.4.0 → v0.6.1](https://github.com/prometheus/client_model/compare/v0.4.0...v0.6.1)
 - github.com/prometheus/common: [v0.44.0 → v0.53.0](https://github.com/prometheus/common/compare/v0.44.0...v0.53.0)
-- github.com/prometheus/procfs: [v0.10.1 → v0.14.0](https://github.com/prometheus/procfs/compare/v0.10.1...v0.14.0)
+- github.com/prometheus/procfs: [v0.10.1 → v0.15.0](https://github.com/prometheus/procfs/compare/v0.10.1...v0.15.0)
 - github.com/rogpeppe/go-internal: [v1.10.0 → v1.11.0](https://github.com/rogpeppe/go-internal/compare/v1.10.0...v1.11.0)
 - github.com/spf13/cobra: [v1.7.0 → v1.8.0](https://github.com/spf13/cobra/compare/v1.7.0...v1.8.0)
 - github.com/stretchr/objx: [v0.5.0 → v0.5.2](https://github.com/stretchr/objx/compare/v0.5.0...v0.5.2)
@@ -64,10 +65,9 @@
 - golang.org/x/text: v0.14.0 → v0.15.0
 - golang.org/x/time: v0.3.0 → v0.5.0
 - golang.org/x/tools: v0.14.0 → v0.18.0
-- google.golang.org/genproto/googleapis/api: d307bd8 → 6ceb2ff
-- google.golang.org/genproto/googleapis/rpc: bbf56f3 → 6ceb2ff
-- google.golang.org/genproto: d783a09 → 6ceb2ff
-- google.golang.org/grpc: v1.60.1 → v1.63.2
+- google.golang.org/genproto/googleapis/api: d307bd8 → 94a12d6
+- google.golang.org/genproto/googleapis/rpc: bbf56f3 → 94a12d6
+- google.golang.org/grpc: v1.60.1 → v1.64.0
 - google.golang.org/protobuf: v1.31.0 → v1.34.1
 - k8s.io/api: v0.29.0 → v0.30.0
 - k8s.io/apimachinery: v0.29.0 → v0.30.0
@@ -84,4 +84,5 @@
 - github.com/kr/pty: [v1.1.1](https://github.com/kr/pty/tree/v1.1.1)
 - go.uber.org/atomic: v1.10.0
 - golang.org/x/lint: 1621716
+- google.golang.org/genproto: d783a09
 - k8s.io/gengo: 9cce18d
