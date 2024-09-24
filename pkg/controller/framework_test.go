@@ -2,6 +2,7 @@ package pv_monitor_controller
 
 import (
 	"context"
+	csitestutil "github.com/kubernetes-csi/csi-test/v5/utils"
 	"testing"
 	"time"
 
@@ -140,7 +141,7 @@ func mockCSIcontrollerServer(csiControllerServer *driver.MockControllerServer, s
 			Entries:   volumeResponseEntries,
 			NextToken: "",
 		}
-		csiControllerServer.EXPECT().ListVolumes(gomock.Any(), in).Return(out, nil).Times(100000)
+		csiControllerServer.EXPECT().ListVolumes(gomock.Any(), csitestutil.Protobuf(in)).Return(out, nil).Times(100000)
 	} else {
 		for _, volume := range objects {
 
@@ -153,7 +154,7 @@ func mockCSIcontrollerServer(csiControllerServer *driver.MockControllerServer, s
 					VolumeCondition: volume.Condition,
 				},
 			}
-			csiControllerServer.EXPECT().ControllerGetVolume(gomock.Any(), in).Return(out, nil).Times(100000)
+			csiControllerServer.EXPECT().ControllerGetVolume(gomock.Any(), csitestutil.Protobuf(in)).Return(out, nil).Times(100000)
 		}
 	}
 }
