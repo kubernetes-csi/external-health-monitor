@@ -8,7 +8,7 @@ require (
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
-	github.com/kubernetes-csi/csi-test/v5 v5.3.0
+	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/grpc v1.65.0
 	k8s.io/api v0.31.0
