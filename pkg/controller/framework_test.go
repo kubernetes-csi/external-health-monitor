@@ -54,7 +54,6 @@ func runTest(t *testing.T, tc *testCase) {
 	informers := informers.NewSharedInformerFactory(client, 0)
 	pvInformer := informers.Core().V1().PersistentVolumes()
 	pvcInformer := informers.Core().V1().PersistentVolumeClaims()
-	podInformer := informers.Core().V1().Pods()
 	nodeInformer := informers.Core().V1().Nodes()
 	eventInformer := informers.Core().V1().Events()
 	option := &PVMonitorOptions{
@@ -94,7 +93,7 @@ func runTest(t *testing.T, tc *testCase) {
 
 	logger, ctx := ktesting.NewTestContext(t)
 	mockCSIcontrollerServer(controllerServer, tc.supportListVolumes, volumes)
-	pvMonitorController := NewPVMonitorController(logger, client, csiConn, pvInformer, pvcInformer, podInformer, nodeInformer, eventInformer, &eventRecorder, option)
+	pvMonitorController := NewPVMonitorController(logger, client, csiConn, informers, &eventRecorder, option)
 	assert.NotNil(pvMonitorController)
 
 	if tc.hasRecoveryEvent {

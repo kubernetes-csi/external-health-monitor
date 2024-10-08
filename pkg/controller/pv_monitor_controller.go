@@ -28,7 +28,7 @@ import (
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
-	coreinformers "k8s.io/client-go/informers/core/v1"
+	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -100,15 +100,10 @@ func NewPVMonitorController(
 	logger klog.Logger,
 	client kubernetes.Interface,
 	conn *grpc.ClientConn,
-	pvInformer coreinformers.PersistentVolumeInformer,
-	pvcInformer coreinformers.PersistentVolumeClaimInformer,
-	podInformer coreinformers.PodInformer,
-	nodeInformer coreinformers.NodeInformer,
-	eventInformer coreinformers.EventInformer,
+	factory informers.SharedInformerFactory,
 	eventRecorder record.EventRecorder,
 	option *PVMonitorOptions,
 ) *PVMonitorController {
-
 	ctrl := &PVMonitorController{
 		csiConn:            conn,
 		eventRecorder:      eventRecorder,
@@ -125,30 +120,34 @@ func NewPVMonitorController(
 		PVWorkerExecuteInterval:  option.PVWorkerExecuteInterval,
 		VolumeListAndAddInterval: option.VolumeListAndAddInterval,
 	}
+	ctrl.setupPVInformer(factory)
+	ctrl.setupPVCInformer(factory)
+	ctrl.setupEventInformer(factory)
+	ctrl.setupPVChecker(factory, client, conn, option)
+	ctrl.setupPodNodeInformersIfNecessary(factory, logger, option)
+	return ctrl
+}
 
-	// PV informer
-	pvInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+func (ctrl *PVMonitorController) setupPVInformer(factory informers.SharedInformerFactory) {
+	informer := factory.Core().V1().PersistentVolumes()
+	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: ctrl.pvAdded,
 		// we do not care about PV changes, so do not need UpdateFunc here.
 		// deleted PVs will not be readded to the queue, so do not need DeleteFunc here
 	})
-	ctrl.pvLister = pvInformer.Lister()
-	ctrl.pvListerSynced = pvInformer.Informer().HasSynced
+	ctrl.pvLister = informer.Lister()
+	ctrl.pvListerSynced = informer.Informer().HasSynced
+}
 
-	// PVC informer
-	ctrl.pvcLister = pvcInformer.Lister()
-	ctrl.pvcListerSynced = pvcInformer.Informer().HasSynced
+func (ctrl *PVMonitorController) setupPVCInformer(factory informers.SharedInformerFactory) {
+	informer := factory.Core().V1().PersistentVolumeClaims()
+	ctrl.pvcLister = informer.Lister()
+	ctrl.pvcListerSynced = informer.Informer().HasSynced
+}
 
-	// Pod informer
-	podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc: ctrl.podAdded,
-		// UpdateFunc: ctrl.podUpdated,  TODO: do we need this ?
-		DeleteFunc: ctrl.podDeleted,
-	})
-	ctrl.podLister = podInformer.Lister()
-	ctrl.podListerSynced = podInformer.Informer().HasSynced
-
-	eventInformer.Informer().AddIndexers(cache.Indexers{
+func (ctrl *PVMonitorController) setupEventInformer(factory informers.SharedInformerFactory) {
+	informer := factory.Core().V1().Events()
+	informer.Informer().AddIndexers(cache.Indexers{
 		util.DefaultEventIndexerName: func(obj interface{}) ([]string, error) {
 			event := obj.(*v1.Event)
 			if event != nil {
@@ -159,22 +158,14 @@ func NewPVMonitorController(
 			}
 		},
 	})
+}
 
-	if ctrl.enableNodeWatcher {
-		ctrl.nodeWatcher = NewNodeWatcher(
-			logger,
-			ctrl.driverName,
-			ctrl.client,
-			ctrl.pvLister,
-			ctrl.pvcLister,
-			nodeInformer,
-			ctrl.eventRecorder,
-			ctrl.pvcToPodsCache,
-			option.NodeWorkerExecuteInterval,
-			option.NodeListAndAddInterval,
-		)
-	}
-
+func (ctrl *PVMonitorController) setupPVChecker(
+	factory informers.SharedInformerFactory,
+	client kubernetes.Interface,
+	conn *grpc.ClientConn,
+	option *PVMonitorOptions,
+) {
 	ctrl.pvChecker = handler.NewPVHealthConditionChecker(
 		option.DriverName,
 		conn,
@@ -182,11 +173,42 @@ func NewPVMonitorController(
 		option.ContextTimeout,
 		ctrl.pvcLister,
 		ctrl.pvLister,
-		eventInformer,
+		factory.Core().V1().Events(),
 		ctrl.eventRecorder,
 	)
+}
 
-	return ctrl
+func (ctrl *PVMonitorController) setupPodNodeInformersIfNecessary(factory informers.SharedInformerFactory, logger klog.Logger, option *PVMonitorOptions) {
+	if ctrl.enableNodeWatcher {
+		ctrl.setupPodInformer(factory)
+		ctrl.setupNodeWatcher(factory, logger, option)
+	}
+}
+
+func (ctrl *PVMonitorController) setupPodInformer(factory informers.SharedInformerFactory) {
+	informer := factory.Core().V1().Pods()
+	informer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc: ctrl.podAdded,
+		// UpdateFunc: ctrl.podUpdated,  TODO: do we need this ?
+		DeleteFunc: ctrl.podDeleted,
+	})
+	ctrl.podLister = informer.Lister()
+	ctrl.podListerSynced = informer.Informer().HasSynced
+}
+
+func (ctrl *PVMonitorController) setupNodeWatcher(factory informers.SharedInformerFactory, logger klog.Logger, option *PVMonitorOptions) {
+	ctrl.nodeWatcher = NewNodeWatcher(
+		logger,
+		ctrl.driverName,
+		ctrl.client,
+		ctrl.pvLister,
+		ctrl.pvcLister,
+		factory.Core().V1().Nodes(),
+		ctrl.eventRecorder,
+		ctrl.pvcToPodsCache,
+		option.NodeWorkerExecuteInterval,
+		option.NodeListAndAddInterval,
+	)
 }
 
 // Run runs the volume health condition checking method
@@ -197,7 +219,7 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	logger.Info("Starting CSI External PV Health Monitor Controller")
 	defer logger.Info("Shutting down CSI External PV Health Monitor Controller")
 
-	if !cache.WaitForCacheSync(ctx.Done(), ctrl.pvcListerSynced, ctrl.pvListerSynced, ctrl.podListerSynced) {
+	if !waitForCacheSyncSucceed(ctx, ctrl) {
 		logger.Error(nil, "Cannot sync cache")
 		return
 	}
@@ -225,6 +247,11 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	}
 
 	<-ctx.Done()
+}
+
+func waitForCacheSyncSucceed(ctx context.Context, ctrl *PVMonitorController) bool {
+	return cache.WaitForCacheSync(ctx.Done(), ctrl.pvListerSynced, ctrl.pvcListerSynced) &&
+		(!ctrl.enableNodeWatcher || cache.WaitForCacheSync(ctx.Done(), ctrl.podListerSynced))
 }
 
 func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes(ctx context.Context) {

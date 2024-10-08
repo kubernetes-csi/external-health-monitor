@@ -229,11 +229,7 @@ func main() {
 		logger,
 		clientset,
 		csiConn,
-		factory.Core().V1().PersistentVolumes(),
-		factory.Core().V1().PersistentVolumeClaims(),
-		factory.Core().V1().Pods(),
-		factory.Core().V1().Nodes(),
-		factory.Core().V1().Events(),
+		factory,
 		eventRecorder,
 		&option,
 	)
