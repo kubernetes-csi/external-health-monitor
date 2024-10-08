@@ -219,7 +219,7 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	logger.Info("Starting CSI External PV Health Monitor Controller")
 	defer logger.Info("Shutting down CSI External PV Health Monitor Controller")
 
-	if !cache.WaitForCacheSync(ctx.Done(), ctrl.pvcListerSynced, ctrl.pvListerSynced, ctrl.podListerSynced) {
+	if !waitForCacheSyncSucceed(ctx, ctrl) {
 		logger.Error(nil, "Cannot sync cache")
 		return
 	}
@@ -247,6 +247,11 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	}
 
 	<-ctx.Done()
+}
+
+func waitForCacheSyncSucceed(ctx context.Context, ctrl *PVMonitorController) bool {
+	return cache.WaitForCacheSync(ctx.Done(), ctrl.pvListerSynced, ctrl.pvcListerSynced) &&
+		(!ctrl.enableNodeWatcher || cache.WaitForCacheSync(ctx.Done(), ctrl.podListerSynced))
 }
 
 func (ctrl *PVMonitorController) checkPVsHealthConditionByListVolumes(ctx context.Context) {
