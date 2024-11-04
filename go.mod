@@ -3,12 +3,12 @@ module github.com/kubernetes-csi/external-health-monitor
 go 1.22.5
 
 require (
-	github.com/container-storage-interface/spec v1.9.0
+	github.com/container-storage-interface/spec v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/google/gofuzz v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.13 // indirect
 	github.com/kubernetes-csi/csi-lib-utils v0.19.0
-	github.com/kubernetes-csi/csi-test/v5 v5.2.0
+	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/stretchr/testify v1.9.0
 	google.golang.org/grpc v1.65.0
 	k8s.io/api v0.31.0
@@ -75,7 +75,7 @@ require (
 	k8s.io/kube-openapi v0.0.0-20240228011516-70dd3763d340 // indirect
 	k8s.io/utils v0.0.0-20240711033017-18e509b52bc8 // indirect
 	sigs.k8s.io/json v0.0.0-20221116044647-bc3834ca7abd // indirect
-	sigs.k8s.io/structured-merge-diff/v4 v4.4.1 // indirect
+	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
