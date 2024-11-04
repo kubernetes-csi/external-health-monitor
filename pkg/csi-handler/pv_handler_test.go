@@ -7,6 +7,7 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
+	"github.com/kubernetes-csi/csi-test/v5/utils"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
 )
 
@@ -77,7 +78,7 @@ func Test_csiPVHandler_ControllerListVolumeConditions(t *testing.T) {
 		NextToken: "",
 	}
 
-	controllerServer.EXPECT().ListVolumes(gomock.Any(), in).Return(out, nil).Times(1)
+	controllerServer.EXPECT().ListVolumes(gomock.Any(), utils.Protobuf(in)).Return(out, nil).Times(1)
 	tests := []struct {
 		name    string
 		want    map[string]*VolumeConditionResult
@@ -156,7 +157,7 @@ func Test_csiPVHandler_ControllerGetVolumeCondition(t *testing.T) {
 					VolumeCondition: volumeMap[tt.volumeId].Condition,
 				},
 			}
-			controllerServer.EXPECT().ControllerGetVolume(gomock.Any(), in).Return(out, nil).Times(1)
+			controllerServer.EXPECT().ControllerGetVolume(gomock.Any(), utils.Protobuf(in)).Return(out, nil).Times(1)
 			got, err := handler.ControllerGetVolumeCondition(context.Background(), tt.volumeId)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("csiPVHandler.ControllerGetVolumeCondition() error = %v, wantErr %v", err, tt.wantErr)
@@ -229,7 +230,7 @@ func Test_csiPVHandler_NodeGetVolumeCondition(t *testing.T) {
 			out := &csi.NodeGetVolumeStatsResponse{
 				VolumeCondition: volumeMap[tt.args.volumeID].Condition,
 			}
-			nodeServer.EXPECT().NodeGetVolumeStats(gomock.Any(), in).Return(out, nil).Times(1)
+			nodeServer.EXPECT().NodeGetVolumeStats(gomock.Any(), utils.Protobuf(in)).Return(out, nil).Times(1)
 			got, err := handler.NodeGetVolumeCondition(tt.args.ctx, tt.args.volumeID, tt.args.volumePath, tt.args.volumeStagingPath)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("csiPVHandler.NodeGetVolumeCondition() error = %v, wantErr %v", err, tt.wantErr)
