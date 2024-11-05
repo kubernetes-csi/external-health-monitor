@@ -13,6 +13,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-test/v5/driver"
+	"github.com/kubernetes-csi/csi-test/v5/utils"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/mock"
 	"github.com/stretchr/testify/assert"
 )
@@ -121,7 +122,7 @@ func TestPVHealthConditionChecker_CheckControllerListVolumeStatuses(t *testing.T
 			}
 
 			_, ctx := ktesting.NewTestContext(t)
-			checker.csiControllerServer.EXPECT().ListVolumes(gomock.Any(), in).Return(out, nil).Times(1)
+			checker.csiControllerServer.EXPECT().ListVolumes(gomock.Any(), utils.Protobuf(in)).Return(out, nil).Times(1)
 			if err := checker.pvHealthConditionChecker.CheckControllerListVolumeStatuses(ctx); (err != nil) != tt.wantErr {
 				t.Errorf("PVHealthConditionChecker.CheckControllerListVolumeStatuses() error = %v", err)
 			}
@@ -240,7 +241,7 @@ func TestPVHealthConditionChecker_CheckControllerVolumeStatus(t *testing.T) {
 			}
 
 			_, ctx := ktesting.NewTestContext(t)
-			checker.csiControllerServer.EXPECT().ControllerGetVolume(gomock.Any(), in).Return(out, nil).Times(1)
+			checker.csiControllerServer.EXPECT().ControllerGetVolume(gomock.Any(), utils.Protobuf(in)).Return(out, nil).Times(1)
 			if err := checker.pvHealthConditionChecker.CheckControllerVolumeStatus(ctx, tt.pv); (err != nil) != tt.wantErr {
 				t.Errorf("PVHealthConditionChecker.CheckControllerVolumeStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
