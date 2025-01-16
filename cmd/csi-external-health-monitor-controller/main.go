@@ -180,7 +180,7 @@ func main() {
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 	if !supportsService {
-		logger.V(2).Info("CSI driver does not support Plugin Controller Service, exiting")
+		logger.Info("CSI driver does not support Plugin Controller Service, exiting")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
@@ -203,7 +203,7 @@ func main() {
 	}
 
 	if (!supportControllerListVolumes && !supportControllerGetVolume) || !supportControllerVolumeCondition {
-		logger.V(2).Info("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
+		logger.Info("CSI driver does not support Controller ListVolumes and GetVolume service or does not implement VolumeCondition, exiting")
 		klog.FlushAndExit(klog.ExitFlushTimeout, 1)
 	}
 
