@@ -116,6 +116,8 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 
 - `metrics-address`: (deprecated) The TCP network address where the Prometheus metrics endpoint will run (example: :8080, which corresponds to port 8080 on local host). The default is the empty string, which means the metrics and leader election check endpoint is disabled.
 
+- `--automaxprocs`: Automatically set the `GOMAXPROCS` environment variable to match the configured Linux container CPU quota. Defaults to false.
+
 * [Arguments set by the `k8s.io/component-base/logs` package for klog](https://github.com/kubernetes/component-base/blob/v0.28.0-rc.0/logs/api/v1/options.go#L337-L355) are supported, such as `--v <log level>` and `--logging-format <log format>`.
 
 ## Community, discussion, contribution, and support

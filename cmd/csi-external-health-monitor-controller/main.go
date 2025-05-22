@@ -43,6 +43,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/leaderelection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"github.com/kubernetes-csi/csi-lib-utils/rpc"
+	"github.com/kubernetes-csi/csi-lib-utils/standardflags"
 	"google.golang.org/grpc"
 
 	monitorcontroller "github.com/kubernetes-csi/external-health-monitor/pkg/controller"
@@ -90,6 +91,7 @@ func main() {
 	c := logsapi.NewLoggingConfiguration()
 	logsapi.AddGoFlags(c, flag.CommandLine)
 	logs.InitLogs()
+	standardflags.AddAutomaxprocs(klog.Infof)
 	flag.Parse()
 	logger := klog.Background()
 	if err := logsapi.ValidateAndApply(c, fg); err != nil {
