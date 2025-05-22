@@ -7,14 +7,14 @@ toolchain go1.24.2
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	github.com/golang/mock v1.6.0
-	github.com/kubernetes-csi/csi-lib-utils v0.20.0
+	github.com/kubernetes-csi/csi-lib-utils v0.22.0
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.69.2
-	k8s.io/api v0.33.0
-	k8s.io/apimachinery v0.33.0
-	k8s.io/client-go v0.33.0
-	k8s.io/component-base v0.33.0
+	k8s.io/api v0.33.1
+	k8s.io/apimachinery v0.33.1
+	k8s.io/client-go v0.33.1
+	k8s.io/component-base v0.33.1
 	k8s.io/klog/v2 v2.130.1
 )
 
@@ -56,6 +56,7 @@ require (
 	go.opentelemetry.io/otel v1.33.0 // indirect
 	go.opentelemetry.io/otel/metric v1.33.0 // indirect
 	go.opentelemetry.io/otel/trace v1.33.0 // indirect
+	go.uber.org/automaxprocs v1.6.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.38.0 // indirect
