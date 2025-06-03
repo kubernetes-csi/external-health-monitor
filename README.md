@@ -96,7 +96,7 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 
 - `kubeconfig <path>`: Path to Kubernetes client configuration that the external-health-monitor-controller uses to connect to the Kubernetes API server. When omitted, default token provided by Kubernetes will be used. This option is useful only when the external-health-monitor-controller does not run as a Kubernetes pod, e.g. for debugging.
 
-- `resync <duration>`: Internal resync interval when the monitor controller re-evaluates all existing resource objects that it was watching and tries to fulfill them. It does not affect re-tries of failed calls! It should be used only when there is a bug in Kubernetes watch logic. The default is ten mintiues.
+- `resync <duration>`: Internal resync interval when the monitor controller re-evaluates all existing resource objects that it was watching and tries to fulfill them. It does not affect re-tries of failed calls! It should be used only when there is a bug in Kubernetes watch logic. The default is ten minutes.
 
 - `csiAddress <path-to-csi>`: This is the path to the CSI Driver socket inside the pod that the external-health-monitor-controller container will use to issue CSI operations (/run/csi/socket is used by default).
 
@@ -104,7 +104,7 @@ Check if there are events on PVCs or Pods that report abnormal volume condition 
 
 - `timeout <duration>`: Timeout of all calls to CSI Driver. It should be set to value that accommodates the majority of `ListVolumes`, `ControllerGetVolume` calls. 15 seconds is used by default.
 
-- `list-volumes-interval <duration>`: Interval of monitoring volume health condition by invoking the RPC interface of `ListVolumes`. You can adjust it to change the frequency of the evaluation process. Five mintiues by default if not set.
+- `list-volumes-interval <duration>`: Interval of monitoring volume health condition by invoking the RPC interface of `ListVolumes`. You can adjust it to change the frequency of the evaluation process. Five minutes by default if not set.
 
 - `enable-node-watcher <boolean>`: Enable node-watcher. node-watcher evaluates volume health condition by checking node status periodically.
 
