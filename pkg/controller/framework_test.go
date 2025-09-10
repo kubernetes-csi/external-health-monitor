@@ -105,7 +105,7 @@ func runTest(t *testing.T, tc *testCase) {
 	ctx, cancel := context.WithCancel(ctx)
 	stopCh := ctx.Done()
 	informers.Start(stopCh)
-	go pvMonitorController.Run(ctx, 1)
+	go pvMonitorController.Run(ctx, 1, nil)
 
 	event, err := mock.WatchEvent(tc.wantAbnormalEvent, eventStore)
 	if tc.wantAbnormalEvent {
