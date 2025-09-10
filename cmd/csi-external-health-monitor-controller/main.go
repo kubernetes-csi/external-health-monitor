@@ -22,9 +22,12 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sync"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
+	"k8s.io/apiserver/pkg/server"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -47,6 +50,7 @@ import (
 	"google.golang.org/grpc"
 
 	monitorcontroller "github.com/kubernetes-csi/external-health-monitor/pkg/controller"
+	"github.com/kubernetes-csi/external-health-monitor/pkg/features"
 )
 
 const (
@@ -236,10 +240,41 @@ func main() {
 		&option,
 	)
 
+	// handle SIGTERM and SIGINT by cancelling the context.
+
+	var (
+		terminate       func()          // called when all controllers are finished
+		controllerCtx   context.Context // shuts down all controllers on a signal
+		shutdownHandler <-chan struct{} // called when the signal is received
+	)
+
+	if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+		// ctx waits for all controllers to finish, then shuts down the whole process, incl. leader election
+		ctx, terminate = context.WithCancel(ctx)
+		var cancelControllerCtx context.CancelFunc
+		controllerCtx, cancelControllerCtx = context.WithCancel(ctx)
+		shutdownHandler = server.SetupSignalHandler()
+
+		defer terminate()
+
+		go func() {
+			defer cancelControllerCtx()
+			<-shutdownHandler
+			logger.Info("Received SIGTERM or SIGINT signal, shutting down controller.")
+		}()
+	}
+
 	run := func(ctx context.Context) {
-		stopCh := ctx.Done()
-		factory.Start(stopCh)
-		monitorController.Run(ctx, int(*workerThreads))
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			var wg sync.WaitGroup
+			stopCh := controllerCtx.Done()
+			factory.Start(stopCh)
+			monitorController.Run(controllerCtx, int(*workerThreads), &wg)
+		} else {
+			stopCh := ctx.Done()
+			factory.Start(stopCh)
+			monitorController.Run(ctx, int(*workerThreads), nil)
+		}
 	}
 
 	if !*enableLeaderElection {
@@ -260,6 +295,9 @@ func main() {
 		le.WithRenewDeadline(*leaderElectionRenewDeadline)
 		le.WithRetryPeriod(*leaderElectionRetryPeriod)
 		le.WithContext(ctx)
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			le.WithReleaseOnCancel(true)
+		}
 
 		// TODO: The broadcaster and eventRecorder in the leaderelection package
 		// within csi-lib-utils do not support contextual logging.

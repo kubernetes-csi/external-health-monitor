@@ -28,6 +28,7 @@ import (
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
+	utilfeature "k8s.io/apiserver/pkg/util/feature"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -37,6 +38,7 @@ import (
 	"k8s.io/klog/v2"
 
 	handler "github.com/kubernetes-csi/external-health-monitor/pkg/csi-handler"
+	"github.com/kubernetes-csi/external-health-monitor/pkg/features"
 	"github.com/kubernetes-csi/external-health-monitor/pkg/util"
 )
 
@@ -212,7 +214,7 @@ func (ctrl *PVMonitorController) setupNodeWatcher(factory informers.SharedInform
 }
 
 // Run runs the volume health condition checking method
-func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
+func (ctrl *PVMonitorController) Run(ctx context.Context, workers int, wg *sync.WaitGroup) {
 	defer ctrl.pvQueue.ShutDown()
 
 	logger := klog.FromContext(ctx)
@@ -231,19 +233,48 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int) {
 	// TODO: we need to cache the PVs info and get the diff so that we can identify the NotFound error
 	// if storage support List Volumes RPC, ListVolumes is preferred for performance reasons
 	if ctrl.supportListVolumes {
-		go wait.UntilWithContext(ctx, ctrl.checkPVsHealthConditionByListVolumes, ctrl.ListVolumesInterval)
-	} else {
-		for i := 0; i < workers; i++ {
-			go wait.UntilWithContext(ctx, ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval)
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wait.UntilWithContext(ctx, ctrl.checkPVsHealthConditionByListVolumes, ctrl.ListVolumesInterval)
+			}()
+		} else {
+			go wait.UntilWithContext(ctx, ctrl.checkPVsHealthConditionByListVolumes, ctrl.ListVolumesInterval)
 		}
-
-		go wait.UntilWithContext(ctx, func(ctx context.Context) {
-			logger := klog.FromContext(ctx)
-			err := ctrl.AddPVsToQueue()
-			if err != nil {
-				logger.Error(err, "Failed to reconcile volumes")
+	} else {
+		if utilfeature.DefaultFeatureGate.Enabled(features.ReleaseLeaderElectionOnExit) {
+			for i := 0; i < workers; i++ {
+				wg.Add(1)
+				go func() {
+					defer wg.Done()
+					wait.UntilWithContext(ctx, ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval)
+				}()
 			}
-		}, ctrl.VolumeListAndAddInterval)
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				wait.UntilWithContext(ctx, func(ctx context.Context) {
+					logger := klog.FromContext(ctx)
+					err := ctrl.AddPVsToQueue()
+					if err != nil {
+						logger.Error(err, "Failed to reconcile volumes")
+					}
+				}, ctrl.VolumeListAndAddInterval)
+			}()
+		} else {
+			for i := 0; i < workers; i++ {
+				go wait.UntilWithContext(ctx, ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval)
+			}
+
+			go wait.UntilWithContext(ctx, func(ctx context.Context) {
+				logger := klog.FromContext(ctx)
+				err := ctrl.AddPVsToQueue()
+				if err != nil {
+					logger.Error(err, "Failed to reconcile volumes")
+				}
+			}, ctrl.VolumeListAndAddInterval)
+		}
 	}
 
 	<-ctx.Done()
