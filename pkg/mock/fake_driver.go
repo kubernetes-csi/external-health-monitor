@@ -50,6 +50,7 @@ type FakeControllerServer struct {
 	getErr       map[string]error
 	getReqs      []*csi.ControllerGetVolumeHealthRequest
 	getDeadlines []time.Time
+	getTimes     []time.Time
 }
 
 var _ csi.ControllerServer = &FakeControllerServer{}
@@ -122,6 +123,16 @@ func (f *FakeControllerServer) GetVolumeHealthDeadlines() []time.Time {
 	return out
 }
 
+// GetVolumeHealthTimes returns when each get request arrived, in the same
+// order as GetVolumeHealthRequests.
+func (f *FakeControllerServer) GetVolumeHealthTimes() []time.Time {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]time.Time, len(f.getTimes))
+	copy(out, f.getTimes)
+	return out
+}
+
 func (f *FakeControllerServer) ControllerListVolumeHealth(ctx context.Context, req *csi.ControllerListVolumeHealthRequest) (*csi.ControllerListVolumeHealthResponse, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -149,6 +160,7 @@ func (f *FakeControllerServer) ControllerGetVolumeHealth(ctx context.Context, re
 	f.getReqs = append(f.getReqs, req)
 	deadline, _ := ctx.Deadline()
 	f.getDeadlines = append(f.getDeadlines, deadline)
+	f.getTimes = append(f.getTimes, time.Now())
 	if err := f.getErr[req.GetVolumeId()]; err != nil {
 		return nil, err
 	}
