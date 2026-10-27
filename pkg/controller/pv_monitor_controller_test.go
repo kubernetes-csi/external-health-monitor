@@ -1,11 +1,16 @@
 package pv_monitor_controller
 
 import (
+	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/tools/cache"
@@ -81,8 +86,21 @@ func Test_NormalVolumeWithGetVolumeHealth(t *testing.T) {
 // driven manually by the test; the informer factory is never started.
 func newGetModeFixture(t *testing.T, pv *v1.PersistentVolume, pvc *v1.PersistentVolumeClaim) (*PVMonitorController, *mock.FakeCSIDriver, cache.Store) {
 	t.Helper()
+	ctrl, drv, factory := newGetModeFixtureFor(t, 1*time.Minute, []*v1.PersistentVolume{pv}, []*v1.PersistentVolumeClaim{pvc})
+	return ctrl, drv, factory.Core().V1().PersistentVolumes().Informer().GetStore()
+}
 
-	client := fake.NewSimpleClientset(pv, pvc)
+func newGetModeFixtureFor(t *testing.T, interval time.Duration, pvs []*v1.PersistentVolume, pvcs []*v1.PersistentVolumeClaim) (*PVMonitorController, *mock.FakeCSIDriver, informers.SharedInformerFactory) {
+	t.Helper()
+
+	objects := make([]runtime.Object, 0, len(pvs)+len(pvcs))
+	for _, pv := range pvs {
+		objects = append(objects, pv)
+	}
+	for _, pvc := range pvcs {
+		objects = append(objects, pvc)
+	}
+	client := fake.NewSimpleClientset(objects...)
 	factory := informers.NewSharedInformerFactory(client, 0)
 	pvStore := factory.Core().V1().PersistentVolumes().Informer().GetStore()
 	pvcStore := factory.Core().V1().PersistentVolumeClaims().Informer().GetStore()
@@ -92,19 +110,48 @@ func newGetModeFixture(t *testing.T, pv *v1.PersistentVolume, pvc *v1.Persistent
 		DriverName:               mock.DriverName,
 		ContextTimeout:           15 * time.Second,
 		ListVolumesInterval:      5 * time.Minute,
-		PVWorkerExecuteInterval:  1 * time.Minute,
+		PVWorkerExecuteInterval:  interval,
 		VolumeListAndAddInterval: 5 * time.Minute,
 		SupportListVolumeHealth:  false,
 	}
 	ctrl := NewPVMonitorController(client, csiConn, factory, metrics.New(), record.NewFakeRecorder(100), option)
+	t.Cleanup(ctrl.pvQueue.ShutDown)
 
-	if err := pvStore.Add(pv); err != nil {
-		t.Fatal(err)
+	for _, pv := range pvs {
+		if err := pvStore.Add(pv); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if err := pvcStore.Add(pvc); err != nil {
-		t.Fatal(err)
+	for _, pvc := range pvcs {
+		if err := pvcStore.Add(pvc); err != nil {
+			t.Fatal(err)
+		}
 	}
-	return ctrl, drv, pvStore
+	return ctrl, drv, factory
+}
+
+func boundVolumes(n int) ([]*v1.PersistentVolume, []*v1.PersistentVolumeClaim) {
+	pvs := make([]*v1.PersistentVolume, 0, n)
+	pvcs := make([]*v1.PersistentVolumeClaim, 0, n)
+	for i := 0; i < n; i++ {
+		pvName := fmt.Sprintf("pv-%d", i)
+		pvcName := fmt.Sprintf("pvc-%d", i)
+		pvcUID := fmt.Sprintf("pvcuid-%d", i)
+		volumeID := fmt.Sprintf("vol-%d", i)
+		pvs = append(pvs, mock.CreatePV(2, pvcName, pvName, mock.DefaultNS, volumeID, types.UID(pvcUID), &mock.BlockVolumeMode, v1.VolumeBound))
+		pvcs = append(pvcs, mock.CreatePVC(1, 2, pvcName, pvcUID, mock.DefaultNS, pvName, v1.ClaimBound))
+	}
+	return pvs, pvcs
+}
+
+func getRequestTimesPerVolume(drv *mock.FakeCSIDriver) map[string][]time.Time {
+	reqs := drv.Controller.GetVolumeHealthRequests()
+	times := drv.Controller.GetVolumeHealthTimes()
+	perVolume := map[string][]time.Time{}
+	for i, req := range reqs {
+		perVolume[req.GetVolumeId()] = append(perVolume[req.GetVolumeId()], times[i])
+	}
+	return perVolume
 }
 
 func Test_PendingPVIsMonitoredOnceBound(t *testing.T) {
@@ -131,7 +178,60 @@ func Test_PendingPVIsMonitoredOnceBound(t *testing.T) {
 	ctrl.checkPVWorker(ctx)
 
 	assert.Len(drv.Controller.GetVolumeHealthRequests(), 1, "bound PV must be health-checked")
-	assert.Equal(1, ctrl.pvQueue.Len(), "tracked PV must be re-enqueued")
+	assert.True(ctrl.pvEnqueued["pv"], "checked PV must stay tracked for its delayed re-check")
+	assert.Equal(0, ctrl.pvQueue.Len(), "checked PV must not be re-enqueued before the monitor interval")
+}
+
+func Test_WorkerCountDoesNotChangePerPVCheckCadence(t *testing.T) {
+	const interval = 300 * time.Millisecond
+
+	for _, tc := range []struct {
+		name    string
+		workers int
+		volumes int
+	}{
+		{name: "more workers than volumes", workers: 10, volumes: 1},
+		{name: "more volumes than workers", workers: 1, volumes: 3},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assert := assert.New(t)
+
+			pvs, pvcs := boundVolumes(tc.volumes)
+			ctrl, drv, factory := newGetModeFixtureFor(t, interval, pvs, pvcs)
+			for _, pv := range pvs {
+				id := pv.Spec.CSI.VolumeHandle
+				drv.Controller.SetGetVolumeHealth(id, &csi.ControllerGetVolumeHealthResponse{VolumeHealth: mock.HealthyVolumeHealth(id)}, nil)
+			}
+
+			_, ctx := ktesting.NewTestContext(t)
+			ctx, cancel := context.WithCancel(ctx)
+			factory.Start(ctx.Done())
+			var wg sync.WaitGroup
+			wg.Go(func() { ctrl.Run(ctx, tc.workers, &wg) })
+			t.Cleanup(func() {
+				cancel()
+				wg.Wait()
+			})
+
+			assert.Eventually(func() bool {
+				times := getRequestTimesPerVolume(drv)
+				for _, pv := range pvs {
+					if len(times[pv.Spec.CSI.VolumeHandle]) < 3 {
+						return false
+					}
+				}
+				return true
+			}, 10*time.Second, 5*time.Millisecond, "every volume must be checked at least three times")
+
+			for volumeID, times := range getRequestTimesPerVolume(drv) {
+				for i := 1; i < len(times); i++ {
+					gap := times[i].Sub(times[i-1])
+					assert.GreaterOrEqual(gap, interval, "%s was checked again before the monitor interval elapsed", volumeID)
+					assert.Less(gap, 2*interval, "%s was not checked again within the monitor interval", volumeID)
+				}
+			}
+		})
+	}
 }
 
 func Test_RequeuePVRequiresTracking(t *testing.T) {
@@ -153,7 +253,7 @@ func Test_RequeuePVRequiresTracking(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl := &PVMonitorController{
 				pvEnqueued: make(map[string]bool),
-				pvQueue:    workqueue.New(),
+				pvQueue:    workqueue.NewTypedDelayingQueue[string](),
 			}
 			t.Cleanup(ctrl.pvQueue.ShutDown)
 

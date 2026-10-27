@@ -58,11 +58,11 @@ type PVMonitorController struct {
 	// pvEnqueued stores CSI PVs enrolled in the recurring monitoring loop.
 	pvEnqueued map[string]bool
 	// we get PVs from pvQueue to check their health conditions
-	pvQueue workqueue.Interface
+	pvQueue workqueue.TypedDelayingInterface[string]
 
 	// Time interval for calling ControllerListVolumeHealth RPC to check volumes' health condition
 	ListVolumesInterval time.Duration
-	// Time interval for executing pv worker goroutines
+	// Time interval between health checks of the same PV
 	PVWorkerExecuteInterval time.Duration
 	// Time interval for listing volumes and add them to queue
 	VolumeListAndAddInterval time.Duration
@@ -91,7 +91,9 @@ func NewPVMonitorController(
 	ctrl := &PVMonitorController{
 		supportListVolumeHealth: option.SupportListVolumeHealth,
 		driverName:              option.DriverName,
-		pvQueue:                 workqueue.NewNamed("csi-monitor-pv-queue"),
+		pvQueue: workqueue.NewTypedDelayingQueueWithConfig(workqueue.TypedDelayingQueueConfig[string]{
+			Name: "csi-monitor-pv-queue",
+		}),
 
 		pvEnqueued: make(map[string]bool),
 
@@ -173,7 +175,8 @@ func (ctrl *PVMonitorController) Run(ctx context.Context, workers int, wg *sync.
 
 	for i := 0; i < workers; i++ {
 		goTrack(wg, func() {
-			wait.UntilWithContext(ctx, ctrl.checkPVWorker, ctrl.PVWorkerExecuteInterval)
+			for ctrl.checkPVWorker(ctx) {
+			}
 		})
 	}
 	goTrack(wg, func() {
@@ -239,12 +242,12 @@ func (ctrl *PVMonitorController) enqueuePV(pvName string) {
 	}
 }
 
-// requeuePV adds a PV back to the worker queue only while it remains enrolled.
+// requeuePV schedules a PV for its next check only while it remains enrolled.
 func (ctrl *PVMonitorController) requeuePV(pvName string) {
 	ctrl.Lock()
 	defer ctrl.Unlock()
 	if ctrl.pvEnqueued[pvName] {
-		ctrl.pvQueue.Add(pvName)
+		ctrl.pvQueue.AddAfter(pvName, ctrl.PVWorkerExecuteInterval)
 	}
 }
 
@@ -257,15 +260,18 @@ func (ctrl *PVMonitorController) forgetPV(pvName string) {
 	ctrl.Unlock()
 }
 
-func (ctrl *PVMonitorController) checkPVWorker(ctx context.Context) {
-	key, quit := ctrl.pvQueue.Get()
+func (ctrl *PVMonitorController) checkPVWorker(ctx context.Context) bool {
+	pvName, quit := ctrl.pvQueue.Get()
 	if quit {
-		return
+		return false
 	}
-	defer ctrl.pvQueue.Done(key)
+	defer ctrl.pvQueue.Done(pvName)
+	ctrl.checkPV(ctx, pvName)
+	return true
+}
 
+func (ctrl *PVMonitorController) checkPV(ctx context.Context, pvName string) {
 	logger := klog.FromContext(ctx)
-	pvName := key.(string)
 	logger.V(4).Info("Started PV processing", "pv", pvName)
 
 	pv, err := ctrl.pvLister.Get(pvName)
