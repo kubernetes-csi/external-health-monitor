@@ -14,9 +14,9 @@
 # out without updating csi-release-tools and csi-driver-host-path.
 CSI_PROW_DRIVER_INSTALL_ORIGINAL="${CSI_PROW_DRIVER_INSTALL}"
 CSI_PROW_DRIVER_INSTALL=install_csi_driver_health_monitor
-install_csi_driver_health_monitor () (
+install_csi_driver_health_monitor () {
     set -x
-    images="$1"
+    local images="$1"
 
     if ${CSI_PROW_BUILD_JOB}; then
        # Add the RBAC env variable. The prow.sh code did not find the file.
@@ -25,6 +25,6 @@ install_csi_driver_health_monitor () (
 
     "${CSI_PROW_DRIVER_INSTALL_ORIGINAL}" "$images"
     set +x
-)
+}
 
 main
